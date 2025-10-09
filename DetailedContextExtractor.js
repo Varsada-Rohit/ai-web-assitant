@@ -13,9 +13,9 @@ function isVisible(element) {
 function getAttributes(element) {
   const attrs = {};
   [
-    // "id",
-    // "name",
-    // "class",
+    "id",
+    "name",
+    "class",
     "type",
     "placeholder",
     "value",
@@ -52,9 +52,9 @@ const keySelectors = [
   "select:not([disabled])",
   '[role="button"]',
   '[role="textbox"]',
-  "h1,h2,h3,h4,h5,h6",
-  "main,section,article",
-  "[aria-label]",
+  //   "h1,h2,h3,h4,h5,h6",
+  //   "main,section,article",
+  //   "[aria-label]",
 ];
 
 // Create a Set to deduplicate
