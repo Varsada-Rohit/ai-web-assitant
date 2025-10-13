@@ -27,26 +27,6 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-@app.get("/")
-def read_root():
-    return {"message": "Hello World"}
-
-@app.post("/upload")
-def upload_file(file: UploadFile = File(...)):
-    content = read_file(file)
-    return {"filename": file.filename, "content": content}
-
-@app.post("/query")
-def query_document_api(query: str):
-    return {"query": query, "result": query_document(query)}
-
-# @app.post("/upload-pymupdf")
-# def upload_file(file: UploadFile = File(...)):
-#     print("FILE LOG",file)
-#     content = read_file_using_pymupdf_langchain(file)
-#     return {"filename": file.filename, "content": content}
-
-
 
 
 # FLOW 
@@ -104,12 +84,26 @@ async def update_context(context: ContextPayload, x_session_id: Optional[str] = 
     if not x_session_id:
         raise HTTPException(status_code=400, detail="Missing X-Session-Id header")
 
-    context_summary = summarise_agent(context.dict())
+    # Import application context and page context mapper
+    from contexts.app_context import web_app_context
+    from contexts.page_context_mapper import get_page_context, extract_page_context_from_app_context
+
+    # Get page-specific context using the mapper
+    # Try dedicated page context first, fallback to extracting from app context
+    page_specific_context = get_page_context(context.route)
+    if not page_specific_context and context.route:
+        page_specific_context = extract_page_context_from_app_context(context.route, web_app_context)
+
+    context_summary = summarise_agent(
+        context.dict(),
+        application_context=web_app_context,
+        page_context=page_specific_context
+    )
 
     session = get_or_create_session(x_session_id)
     session.update_current_dom_summary(context_summary.summary)
     session.save()
-    
+
     return {"status": "success"}
 
 @app.post("/api/update-interaction-dom")

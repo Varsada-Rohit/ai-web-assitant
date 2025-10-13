@@ -79,8 +79,23 @@ def web_assistant_agent(context: Dict[str, Any], question: str, conversation_his
         conversation_history=conversation_history,
         web_app_context=web_app_context
     ))]
+    import json
 
-    
+    # Convert all messages to dictionaries that are JSON serializable
+    def serialize_message(msg):
+        # Try to use the pydantic model's dict, or fallback to repr
+        try:
+            return msg.dict()
+        except AttributeError:
+            # Try to serialize known message patterns
+            return {
+                "type": msg.__class__.__name__,
+                "content": getattr(msg, "content", repr(msg))
+            }
+
+    serializable_messages = [serialize_message(msg) for msg in messages]
+    with open("messages.json", "w") as f:
+        json.dump(serializable_messages, f, indent=2)
     # Add conversation history if provided
     # if conversation_history:
     #     # Add previous messages (excluding the current user question which will be added separately)
