@@ -122,20 +122,33 @@ Interactable Elements Found:
 
 **For each remaining plan step, check if it's executable:**
 
+**CRITICAL: CHECK NAVIGATION STEPS FIRST!**
+
+**Navigation steps have SPECIAL RULES:**
+- Navigation steps start with "navigate to" or "Navigate to"
+- Navigation steps are ALWAYS executable if sidebar navigation is visible
+- Do NOT check if target page elements exist - just check if navigation link exists
+- Look for sidebar icons with aria-label like "open Engagements", "open Customers", etc.
+
+**Example Navigation Check:**
+```
+Step 1: "navigate to the /calendar/engagements/home page"
+Current DOM: Dashboard page with sidebar visible
+Sidebar has: <span aria-label="open Engagements">
+→ EXECUTABLE! Generate navigate action immediately
+→ Do NOT check if date pickers exist yet - that's for AFTER navigation
+```
+
 **Matching Rules:**
 
-**✅ EXECUTABLE - Element is interactable in current DOM:**
-- Step says "Click 'From Date' picker" → Found: `#from-date` → EXECUTABLE
-- Step says "Select September 15" → Date picker interactive → EXECUTABLE
-- Step says "Click Location dropdown and select X" → Found: `#location-filter` → EXECUTABLE
 
 **❌ BLOCKED - Element NOT in current DOM:**
-- Step says "Click 'From Date' picker" → Not found in DOM → BLOCKED
+- Step says "Click 'From Date' picker" → Not found in DOM → BLOCKED (need to navigate first)
 - Step says "Click three-dot menu in row" → Table not visible → BLOCKED
 - Step says "Click 'Assign' button in modal" → Modal not open → BLOCKED
 
 **EDGE CASE: Already Completed (DOM shows it's done)**
-- Step says "Navigate to Engagements" + DOM route = "/engagements" → Mark as completed
+- Step says "Navigate to Engagements" + DOM route = "/calendar/engagements/home" → Mark as completed
 - Step says "Filter by date" + DOM shows dates already selected → Mark as completed
 
 **Example Matching:**
@@ -147,7 +160,7 @@ Step 3: Select September 15
 Step 4: Click 'To Date' picker
 Step 5: Select October 15
 
-Current DOM: Engagements page (route: /calendar/calendar/engagements/home)
+Current DOM: Engagements page (route: /calendar/engagements/home)
 
 Analysis:
 ✅ Step 1: Route matches /engagements → Already completed
@@ -166,13 +179,36 @@ Decision:
 
 **BATCHING RULE: Batch ALL executable steps together that can be done with current DOM.**
 
-**Scenario 1: Only Navigation Executable**
+**CRITICAL: NAVIGATION-FIRST BATCHING LOGIC**
 ```
-DOM: Dashboard page
-Executable: Only "Engagements" sidebar link
-→ Batch: [Step 1] (navigation only)
-→ Remaining: [2, 3, 4, 5] (filters not visible yet)
-→ Batch Reason: "Only navigation link visible, filters require Engagements page"
+If Step 1 is navigation AND current route doesn't match target:
+  → Batch ONLY Step 1 (navigation)
+  → Mark Steps 2+ as remaining (they need target page to load)
+  → DO NOT check if Steps 2+ elements exist - they won't until navigation completes
+
+If Step 1 is navigation AND current route MATCHES target:
+  → Mark Step 1 as completed (already there)
+  → Check Steps 2+ for executability on current page
+  → Batch all executable steps from Steps 2+
+```
+
+**Scenario 1: Only Navigation Executable (MOST COMMON)**
+```
+Plan: [1: Navigate to Engagements, 2: Set From Date, 3: Set To Date]
+DOM: Dashboard page with sidebar visible
+Current Route: /calendar/dashboard/home
+Target Route: /calendar/engagements/home
+
+Analysis:
+✅ Step 1: Navigation to /calendar/engagements/home → EXECUTABLE
+❌ Step 2: From Date picker → NOT IN DOM (on Dashboard, not Engagements page)
+❌ Step 3: To Date picker → NOT IN DOM (on Dashboard, not Engagements page)
+
+Decision:
+→ Batch: [1] (navigation only)
+→ Remaining: [2, 3] (filters require Engagements page to load first)
+→ Batch Reason: "Navigation to Engagements page required, filters not visible on Dashboard"
+→ action_items: [{{action: "navigate", element_selector: "", value: "/calendar/engagements/home", description: "Navigate to Engagements page"}}]
 ```
 
 **Scenario 2: All Filters Visible**
@@ -230,13 +266,23 @@ Executable: None of the required elements found
    → {{action: "select", element_selector: "#department-filter", value: "Sales Department", description: "Select Sales Department"}}
    ```
 
-4. **"navigate"** - Page navigation (route changes)
+4. **"navigate"** - Page navigation (route changes) - **NO DOM SELECTOR NEEDED**
    ```
-   Step: "Navigate to Engagements page"
-   → {{action: "navigate", element_selector: "[data-menu='engagements']", value: "/calendar/calendar/engagements/home", description: "Navigate to Engagements"}}
+   Step: "navigate to the /calendar/engagements/home page"
+   → {{action: "navigate", element_selector: "", value: "/calendar/engagements/home", description: "Navigate to Engagements page"}}
+
+   Step: "navigate to the /calendar/crm/home page"
+   → {{action: "navigate", element_selector: "", value: "/calendar/crm/home", description: "Navigate to Customers page"}}
    ```
 
-**Selector Extraction Rules:**
+   **CRITICAL FOR NAVIGATION:**
+   - Navigation does NOT require DOM selector or clicking sidebar
+   - Frontend router handles navigation programmatically
+   - `element_selector` MUST be empty string `""`
+   - `value` contains the target route path (extract from step description)
+   - Example: "navigate to /calendar/engagements/home" → value: "/calendar/engagements/home"
+
+**Selector Extraction Rules (for click/fill/select actions only):**
 - Extract from DOM: Use exact id, name, aria-label, or data-* attribute
 - Ensure uniqueness: Selector must match ONE element with `document.querySelector()`
 - Prefer specificity: `#from-date` over `.date-picker`
@@ -278,12 +324,6 @@ Executable: None of the required elements found
    - "Modal not open, 'Assign' button not found in DOM"
    - "Date pickers not loaded yet"
 
-7. **"navigate"** - Page navigation (route changes)
-   ```
-   Step: "Navigate to Engagements page"
-   → {{action: "navigate", element_selector: "[data-menu='engagements']", value: "/calendar/calendar/engagements/home", description: "Navigate to Engagements"}}
-   ```
-
 ⸻
 
 ## EDGE CASES & HANDLING
@@ -299,7 +339,7 @@ Executable: None of the required elements found
 **Example:**
 ```
 Plan Step 1: Navigate to Engagements
-Current Route: /calendar/calendar/engagements/home
+Current Route: /calendar/engagements/home
 → Step 1 already complete, skip to Step 2
 ```
 
@@ -413,14 +453,16 @@ DOM: Form with all fields + submit button visible
 
 ## CRITICAL RULES
 
-1. **DOM-Driven Batching** - Only batch steps where ALL required elements exist in current DOM
-2. **No Guessing** - If element not found, mark step as blocked, don't generate action
-3. **Precise Selectors** - Use exact, unique selectors that work with `document.querySelector()`
-4. **Sequential Order** - Maintain plan step order in generated actions
-5. **Progress Accuracy** - completed_steps must be verifiable in DOM or execution state
-6. **Completion Logic** - task_completed = true ONLY when all steps done AND outcome verified
-7. **Clear Communication** - batch_reason and blocked_reason must explain decisions clearly
-8. **Date Context** - Always use current_date_time for date-related values
+1. **NAVIGATION FIRST** - If step 1 is navigation and route doesn't match, batch ONLY navigation. Don't check target page elements yet.
+2. **DOM-Driven Batching** - Only batch steps where ALL required elements exist in current DOM
+3. **No Guessing** - If element not found, mark step as blocked, don't generate action
+4. **Precise Selectors** - Use exact, unique selectors that work with `document.querySelector()`
+5. **Sequential Order** - Maintain plan step order in generated actions
+6. **Progress Accuracy** - completed_steps must be verifiable in DOM or execution state
+7. **Completion Logic** - task_completed = true ONLY when all steps done AND outcome verified
+8. **Clear Communication** - batch_reason and blocked_reason must explain decisions clearly
+9. **Date Context** - Always use current_date_time for date-related values
+10. **Never Block on Navigation** - Navigation steps are always executable if sidebar is visible. Don't wait for target page elements.
 
 ⸻
 
