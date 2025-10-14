@@ -255,6 +255,14 @@ def summarise_agent(
     Returns:
         SummariseResponse with comprehensive state summary
     """
+    print(f"\n📊 SUMMARISE AGENT STARTED")
+    print(f"   Route: {context.get('route', 'Unknown')}")
+    print(f"   Distilled Nodes Count: {len(context.get('distilledNodes', []))}")
+    print(f"   Main Tree Count: {len(context.get('mainTree', []))}")
+    print(f"   App State Keys: {list(context.get('appState', {}).keys())}")
+    print(f"   Application Context Length: {len(application_context) if application_context else 0}")
+    print(f"   Page Context Length: {len(page_context) if page_context else 0}")
+    
     summarise_model = model.with_structured_output(SummariseResponse)
 
     # Use empty strings if context not provided
@@ -270,9 +278,14 @@ def summarise_agent(
         page_context=page_ctx
     )
 
+    print("🤖 Calling AI model for page summarization...")
     response = summarise_model.invoke([
         SystemMessage(content=formatted_system_prompt),
         HumanMessage(content="Analyze the current page state and provide a comprehensive runtime state summary following the specified format.")
     ])
+    
+    print(f"✅ SUMMARISE AGENT COMPLETED")
+    print(f"   Summary Length: {len(response.summary)} chars")
+    print(f"   Summary Preview: {response.summary[:200]}...")
 
     return response

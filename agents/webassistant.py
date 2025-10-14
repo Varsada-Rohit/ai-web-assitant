@@ -70,6 +70,10 @@ def web_assistant_agent(context: Dict[str, Any], question: str, conversation_his
     It uses the question to answer the question.
     It can use conversation history for context-aware responses.
     """
+    print(f"\n🤖 WEB ASSISTANT AGENT STARTED")
+    print(f"   Question: {question[:100]}...")
+    print(f"   Context Type: {type(context)}")
+    print(f"   Conversation History Length: {len(conversation_history) if conversation_history else 0}")
 
     web_assistant_model = model.with_structured_output(WebAssistantResponse)
 
@@ -109,8 +113,14 @@ def web_assistant_agent(context: Dict[str, Any], question: str, conversation_his
     messages.append(HumanMessage(content=question))
 
     # beautfully print all the messages in the messages list but exclude the first system message
+    print("📝 Messages being sent to AI:")
     for msg in messages[1:]:
-        print(msg.content)
+        print(f"   {msg.content[:100]}...")
     
+    print("🤖 Calling AI model...")
     response = web_assistant_model.invoke(messages)
+    print(f"✅ WEB ASSISTANT AGENT COMPLETED")
+    print(f"   Answer Length: {len(response.answer)} chars")
+    print(f"   Need Action Items: {response.need_to_perform_action_items}")
+    
     return response

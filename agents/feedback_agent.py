@@ -48,12 +48,23 @@ conversation history : {conversation_history}
 """
 
 def feedback_agent(action_items: List[ActionItem], user_query: str, page_summary: str, distilled_dom: str, conversation_history: str):
+    print(f"\n🔄 FEEDBACK AGENT STARTED")
+    print(f"   User Query: {user_query[:100]}...")
+    print(f"   Action Items Count: {len(action_items)}")
+    print(f"   Page Summary Length: {len(page_summary)} chars")
+    print(f"   Distilled DOM Length: {len(str(distilled_dom))} chars")
+    
     feedback_model = model.with_structured_output(FeedbackResponse)
-
 
     formatted_system_prompt = system_prompt.format(action_items=action_items, user_query=user_query, page_summary=page_summary, distilled_dom=distilled_dom, conversation_history=conversation_history)
 	
-    print('TRIGGERED FEEDBACK AGENT')
+    print('🤖 TRIGGERED FEEDBACK AGENT - Calling AI model...')
 
     response = feedback_model.invoke([SystemMessage(content=formatted_system_prompt),HumanMessage(content="Validate the action items and return the message to be displayed to the user.")])
+    
+    print(f"✅ FEEDBACK AGENT COMPLETED")
+    print(f"   Completed: {response.isCompleted}")
+    print(f"   Should Wait: {response.should_wait}")
+    print(f"   Message Length: {len(response.message)} chars")
+    
     return response

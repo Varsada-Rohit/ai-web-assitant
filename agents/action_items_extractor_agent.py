@@ -25,7 +25,6 @@ system_prompt = """
 Your goal is to analyze the user’s query along with the latest page distilled DOM, understand what the user wants to accomplish, and produce a structured list of UI actions required to achieve that task.
 Each action should be realistic, precise, and based on elements that exist in the provided DOM.
 
-
 	1.	Interpret the User Intent:
 Understand what the user is asking to do (e.g., “fill the email and password, and login” “click the login button,” “select the category ‘Shoes’,” “go to settings,” etc.).
 	2.	Ground in DOM Context:
@@ -94,6 +93,12 @@ NOTE: **If you do not have the information to perform the action items, ask the 
 """
 
 def action_items_extractor_agent(context: Dict[str, Any], question: str, conversation_history: List = None,feedback: str = None):
+    print(f"\n🎯 ACTION ITEMS EXTRACTOR AGENT STARTED")
+    print(f"   Question: {question[:100]}...")
+    print(f"   Context Keys: {list(context.keys())}")
+    print(f"   Distilled Nodes Count: {len(context.get('distilledNodes', []))}")
+    print(f"   Route: {context.get('route', 'Unknown')}")
+    print(f"   Feedback: {feedback[:50] if feedback else 'None'}...")
 
     action_items_extractor_model = model.with_structured_output(ActionItemsExtractorResponse)
     
@@ -111,7 +116,15 @@ def action_items_extractor_agent(context: Dict[str, Any], question: str, convers
     #             messages.append(AIMessage(content=f"Previous assistant response: {msg.content}"))
 
     messages.append(HumanMessage(content=question))    
+    print("🤖 Calling AI model for action items extraction...")
 
     response = action_items_extractor_model.invoke(messages)
+    print(f"✅ ACTION ITEMS EXTRACTOR COMPLETED")
+    print(f"   Generated {len(response.action_items)} action items")
+    print(f"   Message: {response.message[:100]}...")
+    
+    # Print each action item
+    for i, item in enumerate(response.action_items):
+        print(f"   Action {i+1}: {item.action} - {item.description[:50]}...")
 
     return response

@@ -5,11 +5,11 @@ This module maps routes to their specific page context information.
 It allows the summarizer agent to understand what each page is designed to do.
 """
 
-from typing import Optional
+from typing import Optional, List
 
 # Define page-specific contexts for each route
 PAGE_CONTEXTS = {
-    '/calendar/configuration/config/agencyProfile': """
+    '/calendar/calendar/configuration/config/agencyProfile': """
     ## Agency Profile Configuration Page
 
     **Purpose:** Configure the business/agency profile settings.
@@ -27,7 +27,7 @@ PAGE_CONTEXTS = {
     - Save/Update button
     """,
 
-    '/calendar/configuration/config/location': """
+    '/calendar/calendar/configuration/config/location': """
     ## Location Management Page
 
     **Purpose:** View and manage business locations.
@@ -101,6 +101,135 @@ PAGE_CONTEXTS = {
     - Message textarea
     - Action buttons: Cancel, Save Template, Send
     """,
+
+    '/calendar/calendar/engagements/home': """
+    ## Engagements Page
+
+    **Purpose:** View and manage engagements (appointments/bookings) registered in the system. Perform actions such as assigning engagements to team members, updating engagement status, and canceling assignments.
+
+    **Primary Goal:** Centralized management of all engagements with filtering, assignment, and status tracking capabilities.
+
+    **Tasks Available:**
+    - View all engagements in a filterable table
+    - Filter engagements by location, department, engagement type, status, date range, and users
+    - Assign engagements to one or multiple team members
+    - Update engagement status through predefined status options
+    - Cancel engagement assignments
+    - View detailed engagement information
+    - Sort engagements by Date & Time or Booked On timestamp
+    - Export engagement reports and staff reports
+    - View personal engagements assigned to the logged-in user
+
+    **Page Layout:**
+    1. **Header Section:**
+       - Page title: "Engagements"
+       - Filter bar with dropdowns and date pickers
+       - Reset button to clear all filters
+       - Reports dropdown menu (right side)
+
+    2. **Main Content Area:**
+       - "My Personal Engagements" collapsible section (shows engagements assigned to current user)
+       - Engagement table with sortable columns
+       - Pagination controls at bottom
+
+    **Filter Controls:**
+    - Location Dropdown (#location-filter) - Filter by location (options: dynamic from system locations, default: "All")
+    - Department Dropdown (#department-filter) - Filter by department (options: dynamic, default: "All")
+    - Engagement Type Dropdown (#engagement-type-filter) - Filter by type (options: dynamic, default: "All")
+    - Status Dropdown (#status-filter) - Filter by status (options: Pending, Completed, No Show, Held, Check-In, Closed, default: "All")
+    - From Date Picker (#from-date) - Set start date (format: MM/DD/YYYY)
+    - To Date Picker (#to-date) - Set end date (format: MM/DD/YYYY)
+    - Users Dropdown (#users-filter) - Filter by assigned user (options: dynamic, default: "All")
+    - Reset Button (#reset-filters-btn) - Clear all filters
+
+    **Table Actions (Three-Dot Menu #engagement-actions-menu):**
+    - **Assign To** - Opens assignment modal to assign team members
+    - **Cancel** - Opens cancellation confirmation dialog
+    - **Update Status** - Opens status update modal
+    - **View Details** - Opens detailed engagement view
+
+    **Key Workflows:**
+
+    **Workflow 1: Filter Engagements**
+    1. Select desired filters (location, department, type, status, date range, or user)
+    2. Table automatically updates to show filtered results
+    3. Apply multiple filters simultaneously
+    4. Click "Reset" to clear all filters
+    Expected: Narrowed engagement list matching filter criteria
+
+    **Workflow 2: Assign Engagement to Team Members**
+    1. Locate engagement in table
+    2. Click three-dot menu in Actions column
+    3. Select "Assign To" option
+    4. Assignment modal appears showing engagement details
+    5. Click "Select Assignees" dropdown
+    6. Search for team member(s) or select from list
+    7. Select one or multiple assignees (multi-select enabled)
+    8. Click "Assign" button
+    Expected: Selected team members assigned to engagement, modal closes, table updates
+
+    **Workflow 3: Update Engagement Status**
+    1. Locate engagement in table
+    2. Click three-dot menu → Select "Update Status"
+    3. Status update modal appears with current status selected
+    4. Select new status from dropdown (Pending, Completed, No Show, Held, Check-In, Closed)
+    5. Click "Update" button
+    Expected: Engagement status updated, modal closes, table reflects new status
+
+    **Workflow 4: Cancel Engagement Assignment**
+    1. Locate engagement in table
+    2. Click three-dot menu → Select "Cancel"
+    3. Confirmation dialog: "Are you sure you want to cancel the engagement?"
+    4. Click "Confirm" button
+    Expected: Engagement assignment cancelled
+
+    **Workflow 5: Download Reports**
+    1. Click reports dropdown menu (top-right)
+    2. Select report type: Staff Reports or Engagements Reports
+    Expected: Report file downloads to device
+
+    **Workflow 6: Sort Engagements**
+    1. Click "Date & Time" or "Booked On" column header
+    2. First click: Sort ascending, Second click: Sort descending
+    Expected: Table reorders based on selected column
+
+    **Forms:**
+
+    **Assign Engagement Form:**
+    - Display-Only: Engagement Type, Date & Time, Location, Department
+    - Interactive: Select Assignees (multi-select dropdown with search, shows selected as pills/badges)
+    - Actions: Cancel, Assign
+
+    **Update Status Form:**
+    - Required: Engagement Status dropdown (Pending, Completed, No Show, Held, Check-In, Closed)
+    - Actions: Cancel, Update
+
+    **Cancel Engagement Form:**
+    - Confirmation message
+    - Actions: Cancel, Confirm
+
+    **Table Columns:**
+    - Name, Contact Number, Location, Department, Engagement Type
+    - Date & Time (sortable), Booked On (sortable)
+    - Status, Additional Fields, Assigned To, Actions
+
+    **Pagination:**
+    - Default: 10 rows per page
+    - Options: 10, 25, 50, or All
+    - Display: "1-10 of 47 engagements"
+    - Navigation: Previous/Next arrows
+
+    **Conditional Behavior:**
+    - My Personal Engagements section: Automatically filtered to logged-in user's assignments
+    - Multiple assignees can be selected for a single engagement
+    - Reassigning adds new assignees to existing assignments
+    - Only Date & Time and Booked On columns are sortable
+
+    **Empty States:**
+    - No engagements: "No engagements found. Engagements will appear here once created."
+    - No filtered results: "No engagements match your filters. Try adjusting your criteria."
+    - No personal engagements: "You have no assigned engagements at this time."
+    """,
 }
 
 
@@ -121,47 +250,39 @@ def get_page_context(route: str) -> Optional[str]:
     if route in PAGE_CONTEXTS:
         return PAGE_CONTEXTS[route]
 
-    # Partial match (for routes with dynamic segments)
+    # Partial match (for routes with dynamic segments or query params)
     for page_route, context in PAGE_CONTEXTS.items():
-        if page_route in route or route in page_route:
+        if page_route in route:
             return context
 
     return None
 
 
-def extract_page_context_from_app_context(route: str, web_app_context: str) -> Optional[str]:
+def get_all_routes() -> List[str]:
     """
-    Fallback method: Extract route-specific context from the full web_app_context string.
-    Used when route is not in PAGE_CONTEXTS mapping.
-
-    Args:
-        route: Current page route (e.g., '/calendar/crm/home')
-        web_app_context: Full application context string
+    Get list of all registered routes.
 
     Returns:
-        Page-specific context or None if not found
+        List of route paths
     """
-    if not route:
-        return None
+    return list(PAGE_CONTEXTS.keys())
 
-    # Simple keyword matching
-    route_keywords = {
-        '/calendar/configuration/config/agencyProfile': 'Agency Profile',
-        '/calendar/configuration/config/location': 'Location',
-        '/calendar/crm/home': 'Customers',
-    }
 
-    # Find matching section in context
-    for route_pattern, keyword in route_keywords.items():
-        if route_pattern in route:
-            # Extract the relevant section from web_app_context
-            start_idx = web_app_context.find(f"- {keyword}")
-            if start_idx != -1:
-                # Find the next section or end
-                next_section = web_app_context.find("\n  - ", start_idx + 1)
-                if next_section != -1:
-                    return web_app_context[start_idx:next_section]
-                else:
-                    return web_app_context[start_idx:]
+def add_page_context(route: str, context: str) -> None:
+    """
+    Dynamically add a new page context.
+    Useful for runtime context registration.
 
-    return None
+    Args:
+        route: Route path
+        context: Page context description
+    """
+    PAGE_CONTEXTS[route] = context
+
+
+def get_target_pages(query: str, web_app_context: str, conversation_history: str) -> Optional[str]:
+    """
+    Get the target pages for a given query.
+    """
+    #TODO: make llm call - given question , conversation history , routes list - get the target page route . 
+    return "/calendar/calendar/engagements/home"

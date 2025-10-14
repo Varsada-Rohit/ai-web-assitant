@@ -13,8 +13,18 @@ from dotenv import load_dotenv
 from datetime import datetime
 import json
 import asyncio
+from contexts.page_context_mapper import get_target_pages
 
 load_dotenv()
+
+print("\n" + "="*60)
+print("🚀 AI WEB ASSISTANT STARTING UP")
+print("="*60)
+print("📡 FastAPI server initializing...")
+print("🤖 AI agents loading...")
+print("📂 Session management ready...")
+print("🔧 Context extractors ready...")
+print("="*60)
 
 app = FastAPI()
 
@@ -26,7 +36,6 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
-
 
 
 # FLOW 
@@ -47,6 +56,7 @@ class ContextPayload(BaseModel):
 class AgentQuery(BaseModel):
     session_id: str
     question: str
+    current_route: str  # NEW: Current page route for context extraction
 
 class SessionHistoryResponse(BaseModel):
     session_id: str
@@ -81,102 +91,170 @@ def remove_session_from_memory(session_id: str):
 
 @app.post("/api/update-context")
 async def update_context(context: ContextPayload, x_session_id: Optional[str] = Header(None)):
+    print(f"\n=== UPDATE CONTEXT REQUEST ===")
+    print(f"Session ID: {x_session_id}")
+    print(f"Route: {context.route}")
+    print(f"Distilled Nodes Count: {len(context.distilledNodes) if context.distilledNodes else 0}")
+    print(f"Main Tree Count: {len(context.mainTree) if context.mainTree else 0}")
+    
     if not x_session_id:
+        print("❌ ERROR: Missing X-Session-Id header")
         raise HTTPException(status_code=400, detail="Missing X-Session-Id header")
 
     # Import application context and page context mapper
     from contexts.app_context import web_app_context
-    from contexts.page_context_mapper import get_page_context, extract_page_context_from_app_context
+    from contexts.page_context_mapper import get_page_context
 
     # Get page-specific context using the mapper
-    # Try dedicated page context first, fallback to extracting from app context
     page_specific_context = get_page_context(context.route)
-    if not page_specific_context and context.route:
-        page_specific_context = extract_page_context_from_app_context(context.route, web_app_context)
+    print(f"📄 Page context loaded for route: {context.route}")
 
+    print("🤖 Running summarise agent...")
     context_summary = summarise_agent(
         context.dict(),
         application_context=web_app_context,
         page_context=page_specific_context
     )
+    print(f"✅ Context summary generated ({len(context_summary.summary)} chars)")
 
     session = get_or_create_session(x_session_id)
     session.update_current_dom_summary(context_summary.summary)
     session.save()
+    print(f"💾 Session updated and saved")
 
+    print("=== CONTEXT UPDATE COMPLETE ===\n")
     return {"status": "success"}
 
 @app.post("/api/update-interaction-dom")
 async def update_interaction_dom(interaction_dom: ContextPayload, x_session_id: Optional[str] = Header(None)):
+    print(f"\n=== UPDATE INTERACTION DOM REQUEST ===")
+    print(f"Session ID: {x_session_id}")
+    print(f"Route: {interaction_dom.route}")
+    print(f"Distilled Nodes Count: {len(interaction_dom.distilledNodes) if interaction_dom.distilledNodes else 0}")
 
     if not x_session_id:
+        print("❌ ERROR: Missing X-Session-Id header")
         raise HTTPException(status_code=400, detail="Missing X-Session-Id header")
     
     session = get_or_create_session(x_session_id)
     session.update_current_interaction_dom(interaction_dom.dict())
+    print(f"🔄 Updated interaction DOM for session: {x_session_id}")
+    
     if x_session_id in session_event_locks:
         session_event_locks[x_session_id].set()
-    session.save()    
+        print(f"🔓 Released event lock for session: {x_session_id}")
+    session.save()
+    print(f"💾 Session saved")
+    print("=== INTERACTION DOM UPDATE COMPLETE ===\n")
     return {"status": "success"}
 
 async def generate_action_items(session_data: Session, query: str, feedback: Optional[str] = None) -> ActionItemsExtractorResponse:
-    print('WAITING FOR RESUME EVENT')
+    print(f"\n🎯 GENERATING ACTION ITEMS")
+    print(f"Session: {session_data.session_id}")
+    print(f"Query: {query[:100]}...")
+    print(f"Feedback: {feedback[:50] if feedback else 'None'}...")
+    
+    print('⏳ WAITING FOR RESUME EVENT')
     if session_data.session_id not in session_event_locks:
         session_event_locks[session_data.session_id] = asyncio.Event()
     await session_event_locks[session_data.session_id].wait()
     session_event_locks[session_data.session_id].clear()
-    print('RESUME EVENT SET')
+    print('✅ RESUME EVENT SET')
+    
     context = session_data.current_interaction_dom
     session_data.current_interaction_dom = None
+    print(f"📋 Context retrieved for action items generation")
 
+    print("🤖 Running action items extractor agent...")
     action_items = action_items_extractor_agent(context, query,session_data.get_recent_context(),feedback)
+    print(f"✅ Generated {len(action_items.action_items)} action items")
 
     session_data.add_event("assistant", "action_planner_agent", action_items.dict())
-    
-    
+    print(f"📝 Event logged for action planner agent")
     
     return action_items
 
 async def generate_streaming_response(query: AgentQuery):
     """Generator function for streaming responses"""
+    print(f"\n🚀 STARTING STREAMING RESPONSE")
+    print(f"Session ID: {query.session_id}")
+    print(f"Question: {query.question[:100]}...")
+    print(f"Current Route: {query.current_route}")
 
-    if not Session.session_exists(query.session_id):
-        yield json.dumps({"error": "No session found", "type": "error"}) + "\n\n"
-        return
-
-    # Check if session exists and get or create it
+    # Always get or create session (don't check if it exists first)
     session_data = get_or_create_session(query.session_id)
-    
-    context_summary = session_data.current_dom_summary
-    if not context_summary:
-        yield json.dumps({"error": "No context found for session", "type": "error"}) + "\n\n"
-        return
+    print(f"📂 Session loaded/created: {query.session_id}")
 
     yield json.dumps({"content": "Processing query", "type": "point"}) + "\n\n"
-    
+
     session_data.add_event("user", "client", query.question)
-    
+    print(f"📝 User event logged")
+
     # Get conversation history for the agent
     conversation_history = session_data.get_recent_context()
+    print(f"📚 Conversation history retrieved ({len(conversation_history)} chars)")
 
-    # Get response from web assistant agent
-    answer = web_assistant_agent(context_summary, query.question, conversation_history)
+    # Import contexts
+    from contexts.app_context import web_app_context
+    from contexts.page_context_mapper import get_page_context
+    from agents.action_planner_agent import action_planner_agent
+
+    # Get page-specific context based on current route
+    page_context = get_page_context(query.current_route)
+    target_page_route = get_target_pages(query.question,web_app_context, conversation_history)
+    target_page_context = get_page_context(target_page_route)
+    print(f"📄 Page context loaded for route: {query.current_route}")
+
+    yield json.dumps({"content": "interaction_dom", "type": "context_request"}) + "\n\n"
+    print("🔄 Requesting interaction DOM from client")
+
+    if session_data.session_id not in session_event_locks:
+        session_event_locks[session_data.session_id] = asyncio.Event()
+    await session_event_locks[session_data.session_id].wait()
+    session_event_locks[session_data.session_id].clear()
+    print("✅ Interaction DOM received")
+
+    # Generate high-level action plan
+    yield json.dumps({"content": "Creating action plan...", "type": "point"}) + "\n\n"
+    print("🎯 Creating action plan...")
+
+    action_plan = action_planner_agent(
+        user_query=query.question,
+        current_route=query.current_route,
+        application_context=web_app_context,
+        page_context=page_context,
+        target_page_context=target_page_context,
+        interaction_dom=session_data.current_interaction_dom,
+        conversation_history=conversation_history
+    )
+    print(f"✅ Action plan created with {action_plan.total_steps} steps")
+
+    # Log the plan
+    session_data.add_event("assistant", "action_planner", action_plan.dict())
+    print(f"📝 Action plan event logged")
+
+    # Stream the plan to user
+    yield json.dumps({
+        "content": {
+            "summary": action_plan.summary,
+            "total_steps": action_plan.total_steps,
+            "steps": [step.dict() for step in action_plan.plan_steps]
+        },
+        "type": "action_plan"
+    }) + "\n\n"
+
+    # TODO: Continue with DOM execution loop here
+    # For now, just acknowledge the plan was created
+    yield json.dumps({"content": "Action plan created. Next: DOM execution (to be implemented)", "type": "point"}) + "\n\n"
+
+    # OLD CODE BELOW - TO BE REPLACED WITH NEW BATCHED EXECUTION FLOW
+    # Keeping temporarily for reference
 
     user_query = query.question
-    
-    
-    session_data.add_event("assistant", "general_agent", answer.answer)
+    # action_items = None
 
-    # •	context_dom
-	# •	interaction_dom
-    
-    # Stream the answer
-    yield json.dumps({"content": answer.answer, "type": "answer"}) + "\n\n"
-
-    print("answer",answer)
-    
-    action_items = None
-    if answer.need_to_perform_action_items:
+    # NOTE: This old logic will be replaced with batched DOM executor
+    if False:  # Disabled for now
         yield json.dumps({"content": "interaction_dom", "type": "context_request"}) + "\n\n"
         action_items = await generate_action_items(session_data, user_query)
         action_items_dict = [item.dict() for item in action_items.action_items]
@@ -204,7 +282,10 @@ async def generate_streaming_response(query: AgentQuery):
                     session_data.current_interaction_dom = None
 
                     feedback = feedback_agent(action_items.action_items, user_query, context_summary, context_after_action_items, session_data.get_recent_context())
-                    print("feedback",feedback)
+                    print(f"🔄 FEEDBACK AGENT RESULT:")
+                    print(f"   Completed: {feedback.isCompleted}")
+                    print(f"   Should Wait: {feedback.should_wait}")
+                    print(f"   Message: {feedback.message[:100]}...")
                     session_data.add_event("assistant", "feedback_agent", feedback.dict())
                     is_user_query_fulfilled = feedback.isCompleted
                     should_wait = feedback.should_wait
@@ -225,9 +306,9 @@ async def generate_streaming_response(query: AgentQuery):
                         break
                     # assistant_message.action_items = action_items_dict
     
-
+    #TODO: write the action items to the session_data 
+    # session_data.add_event("assistant", "action_items", action_items.dict())
         
-    
     # session_data.messages.append(assistant_message)
     session_data.save()
     
@@ -237,6 +318,12 @@ async def generate_streaming_response(query: AgentQuery):
 @app.post("/api/agent-query")
 def agent_query(query: AgentQuery):
     """Agent query endpoint with streaming response"""
+    print(f"\n🎯 AGENT QUERY RECEIVED")
+    print(f"Session: {query.session_id}")
+    print(f"Question: {query.question}")
+    print(f"Route: {query.current_route}")
+    print("=" * 50)
+    
     return StreamingResponse(
         generate_streaming_response(query), 
         media_type="text/event-stream"
