@@ -67,7 +67,7 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
 3. **Generate SPECIFIC Interaction Instructions - Tell Users EXACTLY What to Do**
 
    **✅ SPECIFIC INSTRUCTIONS (tell users exactly what to click/select/type):**
-   - "Click on the 'Engagements' option in the left sidebar menu"
+   - "navigate to the /calendar/engagements/home page"
    - "Click on the 'Location' dropdown filter and select 'Downtown Office'"
    - "Click on the 'Department' dropdown filter and select 'Sales Department'"
    - "Click on the 'Status' dropdown filter and select 'Pending'"
@@ -78,7 +78,7 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
 
    **❌ GENERIC INSTRUCTIONS (avoid these - too vague):**
    - "Filter engagements by location" → Should be "Click on the Location dropdown and select 'Downtown Office'"
-   - "Navigate to Engagements page" → Should be "Click on the 'Engagements' option in the left sidebar menu"
+   - "Navigate to Engagements page" → Should be "navigate to the /calendar/engagements/home page"
    - "Apply filters" → Should be "Click on each dropdown and select the specific option"
 
    **RULE: Each step must tell the user EXACTLY what UI element to interact with and what to select/type!**
@@ -102,7 +102,7 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
    - NOT: "Enter customer name"
 
 7. **Handle Navigation with Specific Instructions**   
-   - "Click on the 'Engagements' option in the left sidebar menu"
+   - "navigate to the /calendar/engagements/home page"
    - NOT: "Navigate to Engagements page"
    - "Click on the 'Configuration' menu item and select 'Agency Profile'"
    - NOT: "Go to agency settings"
@@ -140,7 +140,7 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
 
 **Query:** "Show me all engagements at the downtown location"
 **Plan:**
-1. Click on the 'Engagements' option in the left sidebar menu
+1. navigate to the /calendar/engagements/home page
 2. Click on the 'Location' dropdown filter and select 'Downtown Office'
 
 **Query:** "Filter engagements by the sales department"
@@ -153,7 +153,7 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
 
 **Query:** "Add a customer named John Doe with email john@example.com"
 **Plan:**
-1. Click on the 'Customers' option in the left sidebar menu
+1. navigate to the /calendar/crm/home page
 2. Click the 'Add Customer' button to open the form
 3. Type 'John' in the 'First Name' field
 4. Type 'Doe' in the 'Last Name' field
@@ -164,13 +164,13 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
 
 **Query:** "Show me all engagements for the sales department at the main office"
 **Plan:**
-1. Click on the 'Engagements' option in the left sidebar menu
+1. navigate to the /calendar/engagements/home page
 2. Click on the 'Department' dropdown filter and select 'Sales Department'
 3. Click on the 'Location' dropdown filter and select 'Main Office'
 
 **Query:** "Add a new location in New York and set it as default"
 **Plan:**
-1. Click on the 'Configuration' option in the left sidebar menu
+1. navigate to the /calendar/configuration/config/location page
 2. Click on the 'Location' submenu option
 3. Click the 'Add Location' button
 4. Type 'New York Office' in the 'Location Name' field
@@ -204,7 +204,7 @@ Given a user query, create SPECIFIC step-by-step instructions that tell users ex
    - Reference UI elements by their visible text/labels: "Click the 'Submit' button"
    - Use dropdown names: "Click on the 'Department' dropdown filter"
    - Use field names: "Type 'John' in the 'First Name' field"
-   - Use menu items: "Click on the 'Engagements' option in the left sidebar menu"
+   - Use navigation instructions: "navigate to the /calendar/engagements/home page"
 
 3. **Use Application Context for Accuracy**
    - Base instructions on what's actually available in the application (use application context)

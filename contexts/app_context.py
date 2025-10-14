@@ -12,24 +12,17 @@ web_app_context = """
         Base URL: /calendar/calendar/[module]/[page]
         Home Page: Dashboard (/dashboard/home) - Overview with engagement statistics and communication metrics in widget cards
 
-    2. LEFT SIDEBAR NAVIGATION
-        Behavior:
+    2. NAVIGATION routes and their corresponding pages
 
-        Fixed left sidebar, always visible
-        Collapses to icons only, expands on hover
-        Active page highlighted
-
-        Menu Items:
-
-        Dashboard - Home/overview page
-        Calendar - Calendar view of appointments
-        Customers - Customer management
-        Requests - Request handling
-        Engagements - Engagement management
-        Slots - Availability management
-        Configuration - System settings
-        Reports - Report access
-        Forms - Form management
+        Dashboard - Home/overview page : route: /calendar/dashboard/home
+        Calendar - Calendar view of appointments : route:/calendar/calendar/home
+        Customers - Customer management : route : /calendar/crm/home
+        Requests - Request handling : route : /calendar/requests/home
+        Engagements - Engagement management : route: /calendar/engagements/home
+        Slots - Availability management : route : /calendar/calendar/slot
+        Configuration - System settings : route : /calendar/configuration/config/agencyProfile
+        Reports - Report access : route : /calendar/reports/home
+        Forms - Form management : route : /calendar/formbuilder
 
 
     3. TOP HEADER (ALWAYS PRESENT)

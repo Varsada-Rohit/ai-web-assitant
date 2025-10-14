@@ -102,7 +102,7 @@ PAGE_CONTEXTS = {
     - Action buttons: Cancel, Save Template, Send
     """,
 
-    '/calendar/calendar/engagements/home': """
+    '/calendar/engagements/home': """
     ## Engagements Page
 
     **Purpose:** View and manage engagements (appointments/bookings) registered in the system. Perform actions such as assigning engagements to team members, updating engagement status, and canceling assignments.
@@ -137,8 +137,8 @@ PAGE_CONTEXTS = {
     - Department Dropdown (#department-filter) - Filter by department (options: dynamic, default: "All")
     - Engagement Type Dropdown (#engagement-type-filter) - Filter by type (options: dynamic, default: "All")
     - Status Dropdown (#status-filter) - Filter by status (options: Pending, Completed, No Show, Held, Check-In, Closed, default: "All")
-    - From Date Picker (#from-date) - Set start date (format: MM/DD/YYYY)
-    - To Date Picker (#to-date) - Set end date (format: MM/DD/YYYY)
+    - From Date Input (#from-date) - Set start date by typing directly (format: MM-DD-YYYY)
+    - To Date Input (#to-date) - Set end date by typing directly (format: MM-DD-YYYY)
     - Users Dropdown (#users-filter) - Filter by assigned user (options: dynamic, default: "All")
     - Reset Button (#reset-filters-btn) - Clear all filters
 
@@ -285,4 +285,4 @@ def get_target_pages(query: str, web_app_context: str, conversation_history: str
     Get the target pages for a given query.
     """
     #TODO: make llm call - given question , conversation history , routes list - get the target page route . 
-    return "/calendar/calendar/engagements/home"
+    return "/calendar/engagements/home"

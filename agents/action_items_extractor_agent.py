@@ -278,6 +278,12 @@ Executable: None of the required elements found
    - "Modal not open, 'Assign' button not found in DOM"
    - "Date pickers not loaded yet"
 
+7. **"navigate"** - Page navigation (route changes)
+   ```
+   Step: "Navigate to Engagements page"
+   → {{action: "navigate", element_selector: "[data-menu='engagements']", value: "/calendar/calendar/engagements/home", description: "Navigate to Engagements"}}
+   ```
+
 ⸻
 
 ## EDGE CASES & HANDLING
