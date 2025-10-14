@@ -45,7 +45,7 @@ web page summary: {web_page_summary}
 conversation history: {conversation_history}
 web app context: {web_app_context}
 
-NOTE: **If you do not have the information to perform the action items, ask the user for it & need_to_perform_action_items should be false.**
+NOTE: **If you do not have the required information to perform the action items, ask the user for it & need_to_perform_action_items should be false.**
 
 """
 

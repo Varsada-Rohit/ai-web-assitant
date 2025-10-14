@@ -7,7 +7,7 @@ from pydantic import Field, BaseModel
 from contexts.app_context import web_app_context
 
 load_dotenv()
-model = init_chat_model('gemini-2.0-flash',model_provider="google_genai")
+model = init_chat_model('gemini-2.5-flash',model_provider="google_genai")
 
 # 
 class ActionItem(BaseModel):
@@ -39,7 +39,7 @@ If an element cannot be confidently matched, you must not guess — instead, ask
 	•	If multiple elements match, clearly indicate the ambiguity in the message.
 	•	The selector should work with document.querySelector method. THIS IS VERY IMPORTANT.
 	4.	Action Mapping Rules:
-	•	Use "click" for buttons, links, icons, or interactive triggers.
+	•	Use "click" for buttons, links, icons, switches, checkboxes, radio buttons or interactive triggers.
 	•	Use "fill" for text fields, input boxes, or textareas (include value).
 	•	Use "select" for dropdowns or checkboxes (include selected value).
 	•	Use "navigate" if the user intends to go to another page or URL.
