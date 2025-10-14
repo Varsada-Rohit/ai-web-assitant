@@ -243,71 +243,154 @@ async def generate_streaming_response(query: AgentQuery):
         "type": "action_plan"
     }) + "\n\n"
 
-    # TODO: Continue with DOM execution loop here
-    # For now, just acknowledge the plan was created
-    yield json.dumps({"content": "Action plan created. Next: DOM execution (to be implemented)", "type": "point"}) + "\n\n"
+    # ========================================
+    # PLAN-BASED EXECUTION LOOP
+    # ========================================
 
-    # OLD CODE BELOW - TO BE REPLACED WITH NEW BATCHED EXECUTION FLOW
-    # Keeping temporarily for reference
+    print("\n🔄 STARTING PLAN-BASED EXECUTION LOOP")
 
-    user_query = query.question
-    # action_items = None
+    # Initialize execution state
+    execution_state = {
+        "completed_steps": [],
+        "current_batch_steps": [],
+        "remaining_steps": list(range(1, action_plan.total_steps + 1)),
+        "current_iteration": 0,
+        "task_completed": False
+    }
 
-    # NOTE: This old logic will be replaced with batched DOM executor
-    if False:  # Disabled for now
+    print(f"📊 Initial Execution State:")
+    print(f"   Total Steps: {action_plan.total_steps}")
+    print(f"   Remaining Steps: {execution_state['remaining_steps']}")
+
+    # Import action items extractor
+    from agents.action_items_extractor_agent import action_items_extractor_agent
+
+    # Execution loop - continue until task is completed
+    while not execution_state["task_completed"]:
+        execution_state["current_iteration"] += 1
+
+        print(f"\n{'='*60}")
+        print(f"🔄 ITERATION {execution_state['current_iteration']}")
+        print(f"{'='*60}")
+        print(f"📊 Execution State:")
+        print(f"   Completed: {execution_state['completed_steps']}")
+        print(f"   Remaining: {execution_state['remaining_steps']}")
+
+        # Request fresh DOM context
         yield json.dumps({"content": "interaction_dom", "type": "context_request"}) + "\n\n"
-        action_items = await generate_action_items(session_data, user_query)
-        action_items_dict = [item.dict() for item in action_items.action_items]
-        yield json.dumps({"content": {"action_items": action_items_dict, "message": action_items.message}, "type": "action_items"}) + "\n\n"
-        
-        if len(action_items.action_items) > 0:
-            # Convert ActionItem objects to dictionaries for JSON serialization
-            # assistant_message.action_items = action_items_dict // TODO: handle later
+        print("🔄 Requesting fresh DOM context from client...")
 
-            is_user_query_fulfilled = False
+        # Wait for DOM update
+        if session_data.session_id not in session_event_locks:
+            session_event_locks[session_data.session_id] = asyncio.Event()
+        await session_event_locks[session_data.session_id].wait()
+        session_event_locks[session_data.session_id].clear()
+        print("✅ DOM context received")
 
-            while not is_user_query_fulfilled:
+        current_dom = session_data.current_interaction_dom
+        session_data.current_interaction_dom = None
 
-                should_wait = True
+        # Generate batched actions for next executable step(s)
+        print(f"🤖 Calling Action Items Extractor Agent...")
+        action_items_response = action_items_extractor_agent(
+            context=current_dom,
+            query=query.question,
+            action_plan=action_plan.dict(),
+            execution_state=execution_state,
+            conversation_history=conversation_history
+        )
 
+        # Update execution state from response
+        execution_state["completed_steps"] = action_items_response.completed_steps
+        execution_state["current_batch_steps"] = action_items_response.current_batch_steps
+        execution_state["remaining_steps"] = action_items_response.remaining_steps
+        execution_state["task_completed"] = action_items_response.task_completed
 
-                while should_wait:
-                    await asyncio.sleep(1)
+        # Log progress
+        print(f"\n📊 EXECUTION PROGRESS - Iteration {execution_state['current_iteration']}")
+        print(f"   Completed Steps: {action_items_response.completed_steps}")
+        print(f"   Current Batch: {action_items_response.current_batch_steps}")
+        print(f"   Remaining Steps: {action_items_response.remaining_steps}")
+        print(f"   Batch Reason: {action_items_response.batch_reason}")
+        if action_items_response.blocked_reason:
+            print(f"   ⚠️  Blocked Reason: {action_items_response.blocked_reason}")
+        print(f"   Task Completed: {action_items_response.task_completed}")
 
-                    if session_data.session_id not in session_event_locks:
-                        session_event_locks[session_data.session_id] = asyncio.Event()
-                    await session_event_locks[session_data.session_id].wait()
-                    session_event_locks[session_data.session_id].clear()
-                    context_after_action_items = session_data.current_interaction_dom
-                    session_data.current_interaction_dom = None
+        # Log event to session
+        session_data.add_event("assistant", "action_items_extractor", {
+            "iteration": execution_state["current_iteration"],
+            "completed_steps": action_items_response.completed_steps,
+            "current_batch_steps": action_items_response.current_batch_steps,
+            "remaining_steps": action_items_response.remaining_steps,
+            "task_completed": action_items_response.task_completed,
+            "batch_reason": action_items_response.batch_reason,
+            "blocked_reason": action_items_response.blocked_reason,
+            "action_items_count": len(action_items_response.action_items)
+        })
 
-                    feedback = feedback_agent(action_items.action_items, user_query, context_summary, context_after_action_items, session_data.get_recent_context())
-                    print(f"🔄 FEEDBACK AGENT RESULT:")
-                    print(f"   Completed: {feedback.isCompleted}")
-                    print(f"   Should Wait: {feedback.should_wait}")
-                    print(f"   Message: {feedback.message[:100]}...")
-                    session_data.add_event("assistant", "feedback_agent", feedback.dict())
-                    is_user_query_fulfilled = feedback.isCompleted
-                    should_wait = feedback.should_wait
-                    yield json.dumps({"content": feedback.message, "type": "feedback"}) + "\n\n"
-                    
-                    if should_wait:
-                        yield json.dumps({"content": "interaction_dom", "type": "context_request"}) + "\n\n"
+        # Stream actions and progress to frontend
+        action_items_dict = [item.dict() for item in action_items_response.action_items]
+        yield json.dumps({
+            "content": {
+                "action_items": action_items_dict,
+                "message": action_items_response.message,
+                "progress": {
+                    "completed_steps": action_items_response.completed_steps,
+                    "current_batch_steps": action_items_response.current_batch_steps,
+                    "remaining_steps": action_items_response.remaining_steps,
+                    "batch_reason": action_items_response.batch_reason,
+                    "blocked_reason": action_items_response.blocked_reason,
+                    "iteration": execution_state["current_iteration"],
+                    "task_completed": action_items_response.task_completed
+                }
+            },
+            "type": "action_items"
+        }) + "\n\n"
 
+        # Check if no actions were generated (blocked or error state)
+        if len(action_items_response.action_items) == 0:
+            if action_items_response.task_completed:
+                print("✅ Task completed with no remaining actions")
+                break
+            elif action_items_response.blocked_reason:
+                print(f"⚠️  Execution blocked: {action_items_response.blocked_reason}")
+                yield json.dumps({
+                    "content": f"⚠️ Execution blocked: {action_items_response.blocked_reason}",
+                    "type": "error"
+                }) + "\n\n"
+                break
+            else:
+                print("⚠️  No actions generated but task not complete - possible error")
+                break
 
-                
-                if not is_user_query_fulfilled and not should_wait:
-                    yield json.dumps({"content": "interaction_dom", "type": "context_request"}) + "\n\n"
-                    action_items = await generate_action_items(session_data, user_query, feedback.message)
-                    # Convert ActionItem objects to dictionaries for JSON serialization
-                    action_items_dict = [item.dict() for item in action_items.action_items]
-                    yield json.dumps({"content": {"action_items": action_items_dict, "message": action_items.message}, "type": "action_items"}) + "\n\n"
-                    if not len(action_items.action_items) > 0:
-                        break
-                    # assistant_message.action_items = action_items_dict
-    
-    #TODO: write the action items to the session_data 
-    # session_data.add_event("assistant", "action_items", action_items.dict())
+        # If task marked as completed, exit loop
+        if action_items_response.task_completed:
+            print(f"\n✅ TASK COMPLETED!")
+            print(f"   Total Iterations: {execution_state['current_iteration']}")
+            print(f"   All {action_plan.total_steps} steps executed successfully")
+
+            yield json.dumps({
+                "content": f"✅ Task completed! All {action_plan.total_steps} steps executed successfully in {execution_state['current_iteration']} iteration(s).",
+                "type": "completion"
+            }) + "\n\n"
+            break
+
+        # Safety check: prevent infinite loops (max 10 iterations)
+        if execution_state["current_iteration"] >= 10:
+            print("⚠️  Maximum iterations reached (10) - stopping execution")
+            yield json.dumps({
+                "content": "⚠️ Maximum iterations reached. Task may not be complete.",
+                "type": "warning"
+            }) + "\n\n"
+            break
+
+    print(f"\n{'='*60}")
+    print(f"🏁 EXECUTION LOOP COMPLETED")
+    print(f"{'='*60}")
+    print(f"   Total Iterations: {execution_state['current_iteration']}")
+    print(f"   Final Completed Steps: {execution_state['completed_steps']}")
+    print(f"   Task Completed: {execution_state['task_completed']}")
+    print(f"{'='*60}\n")
         
     # session_data.messages.append(assistant_message)
     session_data.save()

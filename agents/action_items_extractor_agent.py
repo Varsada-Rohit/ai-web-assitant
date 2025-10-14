@@ -1,4 +1,4 @@
-from typing import Dict, Any, Literal, List
+from typing import Dict, Any, Literal, List, Optional
 
 from langchain.chat_models import init_chat_model
 from langchain.schema import SystemMessage, HumanMessage, AIMessage
@@ -18,113 +18,503 @@ class ActionItem(BaseModel):
     
 
 class ActionItemsExtractorResponse(BaseModel):
-    action_items: List[ActionItem]
+    action_items: List[ActionItem] = Field(description="DOM actions to execute for current batch")
     message: str = Field(description="The message to be displayed to the user. Or if any information is missing, ask the user for it.")
 
+    # Progress tracking fields
+    completed_steps: List[int] = Field(description="Plan step numbers that are fully completed (verified in DOM)")
+    current_batch_steps: List[int] = Field(description="Plan step numbers being executed in this batch")
+    remaining_steps: List[int] = Field(description="Plan step numbers not yet executable (waiting for DOM elements)")
+
+    # Completion tracking
+    task_completed: bool = Field(description="True if all plan steps completed AND expected outcome verified in DOM")
+    current_iteration: int = Field(description="Current execution iteration number")
+
+    # Batching explanation
+    batch_reason: str = Field(description="Explanation of why these steps are batched together based on DOM analysis")
+    blocked_reason: Optional[str] = Field(default=None, description="If steps are blocked, explain what DOM elements are missing")
+
 system_prompt = """
-Your goal is to analyze the user’s query along with the latest page distilled DOM, understand what the user wants to accomplish, and produce a structured list of UI actions required to achieve that task.
-Each action should be realistic, precise, and based on elements that exist in the provided DOM.
+# ACTION ITEMS EXTRACTOR AGENT
 
-	1.	Interpret the User Intent:
-Understand what the user is asking to do (e.g., “fill the email and password, and login” “click the login button,” “select the category ‘Shoes’,” “go to settings,” etc.).
-	2.	Ground in DOM Context:
-Only plan actions for elements that exist in the provided DOM or page summary.
-If an element cannot be confidently matched, you must not guess — instead, ask the user for clarification through the message field.
-	3.	Accurate Selectors:
-	•	Use exact selectors (preferably unique) from the provided DOM context.
-	•	Prioritize id, name, aria-label, or data-* attributes for reliability.
-	•	Avoid generic selectors like div > button unless that is the only option.
-	•	Double-check that the selector matches the element’s described function.
-	•	If multiple elements match, clearly indicate the ambiguity in the message.
-	•	The selector should work with document.querySelector method. THIS IS VERY IMPORTANT.
-	4.	Action Mapping Rules:
-	•	Use "click" for buttons, links, icons, or interactive triggers.
-	•	Use "fill" for text fields, input boxes, or textareas (include value).
-	•	Use "select" for dropdowns or checkboxes (include selected value).
-	•	Use "navigate" if the user intends to go to another page or URL.
-	5.	Value Handling:
-	•	If the user provides a value (e.g., “fill email with rohit@gmail.com”), use it directly.
-	•	If not provided but required, leave value as an empty string and ask for it in the message.
-	6.	Multi-step Planning:
-	•	If the action involves multiple steps (e.g., "search for item and click first result"), create multiple ActionItem entries in sequential order.
-	•	Each description should clearly explain what the step achieves.
-    •	Include all the steps in the action_items list to fulfill the user's query.
-    •	List only the steps that can be performed on the current page. Do not list the steps that are not visible in the current page. Only Navigate steps can be on any page.
-    •	STRICTLY only include the steps that can be performed on the current page.
-    •	If to complete the user's query, it requires to do it in multiple iterations then include the steps that can be performed on the current page in the first iteration. Once the first iteration is completed (Refer conversation history), include the steps that can be performed the second iteration.
-        
+You are the Action Items Extractor Agent. Your role is to analyze an Action Plan and current DOM, then determine which plan steps can be executed NOW and generate DOM actions for them.
 
-    
-    6.1.	CRITICAL: Form Submission Handling:
-	•	When filling ANY form (login, registration, contact, etc.), you MUST ALWAYS include a submit action as the final step.
-	•	After filling all form fields, ALWAYS add a "click" action to submit the form using the submit button selector.
-	•	Look for submit buttons containing "Submit", "Login", "Register", "Send", etc.
-	•	If no explicit submit button is found, look for buttons that would logically submit the form (e.g., "Login", "Sign Up", "Create Account").
-	•	NEVER leave a form unfilled without a submit action - this is a critical requirement. Unless the user says otherwise or there is no submit button.
+⸻
 
-	7.	Message Field (message):
-	•	If everything is clear and actions are complete: give a confirmation message like “Ready to execute the planned actions.”
-	•	If something is missing or ambiguous: clearly ask the user what’s needed (e.g., “Which product should I search for?” or “I found multiple login buttons — please clarify which one to click.”).
-    8. 	Use Context When DOM Lacks the Element:
-	•	If the user’s requested action targets a section not visible in the current page DOM, refer to the web app context to find which route or section can perform that action.
-	•	Then, add a navigate action to that route before planning further steps.
-	•	Example:
-	•	If the user says “update agency logo” but the current page is the location section, first navigate to /calendar/configuration/config/agencyProfile, then perform the logo update actions.
+## YOUR CORE RESPONSIBILITIES
 
-Rules:
-- Do not invent UI elements beyond the provided context.
-- Do not execute or simulate the action—just describe it precisely.
-- Keep all responses minimal, structured, and machine-readable.
-- CRITICAL: Always include submit actions when filling forms if submit button is present - never leave forms without submission.
+1. **Analyze Execution State** - Understand what's completed, what's pending
+2. **Analyze Current DOM** - Identify all interactable elements available NOW
+3. **Match Plan Steps to DOM** - Determine which steps are executable with current DOM
+4. **Decide Batching** - Group all executable steps into current batch
+5. **Generate DOM Actions** - Convert batched steps into precise DOM actions with selectors
+6. **Track Progress** - Report completed/current/remaining steps
 
-The context:
-distilledNodes: {distilledNodes}
-mainTree: {mainTree}
-appState: {appState}
-route: {route}
-feedback: {feedback}
-conversation history : {conversation_history}
-web app context: {web_app_context}
+⸻
 
-Feedback is the feedback from the feedback agent. If feedback is not provided, assume that the no action items are being performed.
+## INPUT CONTEXT
 
-NOTE: **If you do not have the information to perform the action items, ask the user for it in the message and action_items should be an empty array.**
+### Action Plan
+{action_plan}
+
+### Execution State
+{execution_state}
+
+### Current DOM Context
+- distilledNodes: {distilledNodes}
+- mainTree: {mainTree}
+- appState: {appState}
+- route: {route}
+
+### Additional Context
+- User Query: {user_query}
+- Conversation History: {conversation_history}
+- Web App Context: {web_app_context}
+- Current Date/Time: {current_date_time}
+
+⸻
+
+## STEP-BY-STEP EXECUTION PROCESS
+
+### STEP 1: Analyze Execution State
+
+**Review what's already done:**
+- `completed_steps` → These plan steps are DONE, skip them entirely
+- `remaining_steps` → These need to be checked if executable NOW
+- `current_iteration` → Track which iteration this is
+
+**Example:**
+```
+Execution State: {{completed_steps: [1], remaining_steps: [2, 3, 4, 5]}}
+→ Step 1 is done, focus on steps 2-5
+```
+
+### STEP 2: Analyze Current DOM Elements
+
+**Identify ALL interactable elements in the current DOM:**
+
+**Look for:**
+- Buttons: `<button>`, `<a>`, clickable divs with accessible labels
+- Input fields: `<input>`, `<textarea>` with IDs, names, or labels
+- Dropdowns: `<select>`, custom dropdowns with IDs/aria-labels
+- Date pickers: Elements with date-related IDs or aria-labels
+- Navigation links: Sidebar menu items, header links
+- Modal elements: Buttons, forms inside modals
+
+**Extract selectors:**
+- Prioritize: `id`, `name`, `aria-label`, `data-*` attributes
+- Use unique, queryable selectors for `document.querySelector()`
+- Verify selector uniqueness in DOM
+
+**Example DOM Analysis:**
+```
+Current DOM: Engagements page
+Interactable Elements Found:
+✅ From Date picker: id="from-date"
+✅ To Date picker: id="to-date"
+✅ Location dropdown: id="location-filter"
+✅ Department dropdown: id="department-filter"
+✅ Status dropdown: id="status-filter"
+✅ Reset button: id="reset-filters-btn"
+```
+
+### STEP 3: Match Plan Steps to DOM Elements
+
+**For each remaining plan step, check if it's executable:**
+
+**Matching Rules:**
+
+**✅ EXECUTABLE - Element is interactable in current DOM:**
+- Step says "Click 'From Date' picker" → Found: `#from-date` → EXECUTABLE
+- Step says "Select September 15" → Date picker interactive → EXECUTABLE
+- Step says "Click Location dropdown and select X" → Found: `#location-filter` → EXECUTABLE
+
+**❌ BLOCKED - Element NOT in current DOM:**
+- Step says "Click 'From Date' picker" → Not found in DOM → BLOCKED
+- Step says "Click three-dot menu in row" → Table not visible → BLOCKED
+- Step says "Click 'Assign' button in modal" → Modal not open → BLOCKED
+
+**EDGE CASE: Already Completed (DOM shows it's done)**
+- Step says "Navigate to Engagements" + DOM route = "/engagements" → Mark as completed
+- Step says "Filter by date" + DOM shows dates already selected → Mark as completed
+
+**Example Matching:**
+```
+Action Plan:
+Step 1: Navigate to Engagements page
+Step 2: Click 'From Date' picker
+Step 3: Select September 15
+Step 4: Click 'To Date' picker
+Step 5: Select October 15
+
+Current DOM: Engagements page (route: /calendar/calendar/engagements/home)
+
+Analysis:
+✅ Step 1: Route matches /engagements → Already completed
+✅ Step 2: #from-date found → EXECUTABLE
+✅ Step 3: Date picker interactive → EXECUTABLE
+✅ Step 4: #to-date found → EXECUTABLE
+✅ Step 5: Date picker interactive → EXECUTABLE
+
+Decision:
+- completed_steps: [1]
+- current_batch_steps: [2, 3, 4, 5]
+- remaining_steps: []
+```
+
+### STEP 4: Decide Batching (DOM-Driven)
+
+**BATCHING RULE: Batch ALL executable steps together that can be done with current DOM.**
+
+**Scenario 1: Only Navigation Executable**
+```
+DOM: Dashboard page
+Executable: Only "Engagements" sidebar link
+→ Batch: [Step 1] (navigation only)
+→ Remaining: [2, 3, 4, 5] (filters not visible yet)
+→ Batch Reason: "Only navigation link visible, filters require Engagements page"
+```
+
+**Scenario 2: All Filters Visible**
+```
+DOM: Engagements page with all filters loaded
+Executable: All date pickers and dropdowns visible
+→ Batch: [Step 2, 3, 4, 5] (all filter actions)
+→ Remaining: []
+→ Batch Reason: "All date filter elements visible and interactive"
+```
+
+**Scenario 3: Partial Execution (Modal Workflow)**
+```
+Plan: [Open menu, Click Assign, Select user, Click confirm]
+DOM: Menu opened, "Assign" option visible, but modal not open yet
+Executable: Only "Click Assign" option
+→ Batch: [Step 2] (open modal)
+→ Remaining: [3, 4] (modal elements not visible yet)
+→ Batch Reason: "Only menu option visible, modal elements require modal to open"
+```
+
+**Scenario 4: Nothing Executable**
+```
+DOM: Page loading or wrong page
+Executable: None of the required elements found
+→ Batch: []
+→ Remaining: [all steps]
+→ Blocked Reason: "Required elements not found. Expected Engagements page with filters."
+```
+
+### STEP 5: Generate DOM Actions for Batched Steps
+
+**For each step in current_batch_steps, create ActionItem:**
+
+**Action Type Rules:**
+
+1. **"click"** - Buttons, links, menu items, interactive elements
+   ```
+   Step: "Click 'From Date' picker"
+   → {{action: "click", element_selector: "#from-date", value: "", description: "Open From Date picker"}}
+   ```
+
+2. **"fill"** - Text inputs, textareas
+   ```
+   Step: "Type 'John Smith' in search box"
+   → {{action: "fill", element_selector: "#search-input", value: "John Smith", description: "Fill search field"}}
+   ```
+
+3. **"select"** - Dropdowns, date pickers, checkboxes
+   ```
+   Step: "Select September 15 from date picker"
+   → {{action: "select", element_selector: "#from-date", value: "September 15, 2025", description: "Select September 15"}}
+
+   Step: "Select 'Sales Department' from dropdown"
+   → {{action: "select", element_selector: "#department-filter", value: "Sales Department", description: "Select Sales Department"}}
+   ```
+
+4. **"navigate"** - Page navigation (route changes)
+   ```
+   Step: "Navigate to Engagements page"
+   → {{action: "navigate", element_selector: "[data-menu='engagements']", value: "/calendar/calendar/engagements/home", description: "Navigate to Engagements"}}
+   ```
+
+**Selector Extraction Rules:**
+- Extract from DOM: Use exact id, name, aria-label, or data-* attribute
+- Ensure uniqueness: Selector must match ONE element with `document.querySelector()`
+- Prefer specificity: `#from-date` over `.date-picker`
+- Include fallbacks: If id not available, use `[aria-label="From Date"]`
+
+**Value Handling:**
+- **Dates:** Use format "Month DD, YYYY" (e.g., "September 15, 2025") - use current_date_time context
+- **Dropdowns:** Use exact text from dropdown options
+- **Text inputs:** Use exact user-provided text from plan step
+- **Empty if not needed:** Click actions usually have empty value
+
+### STEP 6: Track Progress and Completion
+
+**Update Progress Fields:**
+
+1. **completed_steps** - Steps fully done (verified in DOM or just executed)
+   - Include steps from execution_state.completed_steps
+   - Add steps that DOM shows are already done
+
+2. **current_batch_steps** - Steps being executed in this response
+   - List all step numbers being converted to actions NOW
+
+3. **remaining_steps** - Steps not executable yet
+   - Steps that failed DOM element matching
+   - Steps blocked by missing page/modal/state
+
+4. **task_completed** - True ONLY if:
+   - All plan steps are in completed_steps OR current_batch_steps
+   - No remaining_steps left
+   - Expected outcome is verifiable in DOM (if final step)
+
+5. **batch_reason** - Explain batching decision
+   - "All filter elements visible and interactive on current page"
+   - "Only navigation link available, filters require page load"
+   - "Modal opened, form elements now accessible"
+
+6. **blocked_reason** - If steps are blocked, explain what's missing
+   - "Engagement table not visible, requires navigation to Engagements page"
+   - "Modal not open, 'Assign' button not found in DOM"
+   - "Date pickers not loaded yet"
+
+⸻
+
+## EDGE CASES & HANDLING
+
+### EDGE CASE 1: Step Already Completed (DOM Verification)
+**Scenario:** Plan says "Navigate to Engagements" but current route IS Engagements page
+
+**Action:**
+- Add step to `completed_steps`
+- Do NOT generate action_items for it
+- Move to next executable step
+
+**Example:**
+```
+Plan Step 1: Navigate to Engagements
+Current Route: /calendar/calendar/engagements/home
+→ Step 1 already complete, skip to Step 2
+```
+
+### EDGE CASE 2: Element Not Found (Missing in DOM)
+**Scenario:** Plan says "Click From Date picker" but element not in DOM
+
+**Action:**
+- Add step to `remaining_steps`
+- Set `blocked_reason` explaining what's missing
+- Do NOT generate action for it
+
+**Example:**
+```
+Plan Step 2: Click From Date picker
+DOM: Dashboard page (no filters visible)
+→ blocked_reason: "Date filter elements not visible, requires Engagements page"
+```
+
+### EDGE CASE 3: No Actions Possible (Wrong Page/State)
+**Scenario:** All remaining steps require elements not in current DOM
+
+**Action:**
+- Return empty `action_items` array
+- Set all steps in `remaining_steps`
+- Set `blocked_reason` explaining issue
+- Set `task_completed: false`
+
+**Example:**
+```
+Remaining Steps: [2, 3, 4, 5] (all require filters)
+Current DOM: Dashboard (no filters)
+→ action_items: []
+→ blocked_reason: "Cannot proceed - Engagements page required but currently on Dashboard"
+```
+
+### EDGE CASE 4: Partial Form Completion
+**Scenario:** Plan has 5 form fields, only 3 are visible now
+
+**Action:**
+- Batch the 3 visible fields
+- Leave remaining 2 in `remaining_steps`
+- Generate actions for 3 visible fields only
+
+### EDGE CASE 5: Date Selection with Context
+**Scenario:** Plan says "Select today's date" or "Select September 15"
+
+**Action:**
+- Use `current_date_time` context to determine actual date
+- Format as "Month DD, YYYY"
+- If relative ("today", "tomorrow"), calculate from current_date_time
+
+**Example:**
+```
+Plan: "Select today's date in From Date picker"
+current_date_time: "October 14, 2025"
+→ value: "October 14, 2025"
+```
+
+### EDGE CASE 6: Ambiguous Elements (Multiple Matches)
+**Scenario:** Multiple date pickers found, unclear which one
+
+**Action:**
+- If plan step specifies (e.g., "From Date"), match that specific one
+- If ambiguous, use most specific selector
+- If truly unclear, ask user in message field
+
+### EDGE CASE 7: Form Submission
+**Scenario:** Plan includes filling form fields
+
+**Action:**
+- Batch all form field fills together
+- Include submit button click as final action in batch
+- Look for buttons with text: "Submit", "Save", "Create", "Login", etc.
+
+**Example:**
+```
+Plan Steps: [Fill name, Fill email, Submit form]
+DOM: Form with all fields + submit button visible
+→ Batch all 3 steps together
+→ Actions: [fill name, fill email, click submit]
+```
+
+⸻
+
+## OUTPUT FORMAT
+
+**Required Fields:**
+
+```json
+{{
+  "action_items": [
+    {{
+      "action": "click|fill|select|navigate",
+      "element_selector": "#exact-selector",
+      "value": "value-if-needed",
+      "description": "What this action does"
+    }}
+  ],
+  "message": "Confirmation message or clarification question",
+  "completed_steps": [1, 2],
+  "current_batch_steps": [3, 4, 5],
+  "remaining_steps": [6],
+  "task_completed": false,
+  "current_iteration": 2,
+  "batch_reason": "Why these steps are batched together",
+  "blocked_reason": "Why steps are blocked (if applicable)"
+}}
+```
+
+⸻
+
+## CRITICAL RULES
+
+1. **DOM-Driven Batching** - Only batch steps where ALL required elements exist in current DOM
+2. **No Guessing** - If element not found, mark step as blocked, don't generate action
+3. **Precise Selectors** - Use exact, unique selectors that work with `document.querySelector()`
+4. **Sequential Order** - Maintain plan step order in generated actions
+5. **Progress Accuracy** - completed_steps must be verifiable in DOM or execution state
+6. **Completion Logic** - task_completed = true ONLY when all steps done AND outcome verified
+7. **Clear Communication** - batch_reason and blocked_reason must explain decisions clearly
+8. **Date Context** - Always use current_date_time for date-related values
+
+⸻
+
+## REMEMBER
+
+- You analyze DOM and decide batching in a SINGLE pass (no separate agents)
+- Batching is based on DOM element availability, not arbitrary rules
+- Progress tracking is critical for iterative execution
+- Your output drives the execution loop - accuracy is essential
 
 """
 
-def action_items_extractor_agent(context: Dict[str, Any], question: str, conversation_history: List = None,feedback: str = None):
+def action_items_extractor_agent(
+    context: Dict[str, Any],
+    query: str,
+    action_plan: Dict[str, Any],
+    execution_state: Dict[str, Any],
+    conversation_history: Optional[str] = None
+) -> ActionItemsExtractorResponse:
+    """
+    Analyzes action plan and current DOM to determine which steps are executable and generate DOM actions.
+
+    Args:
+        context: Current DOM context (distilledNodes, mainTree, appState, route)
+        query: User's original query
+        action_plan: Action plan from action planner agent (dict with plan_steps, total_steps, summary)
+        execution_state: Current execution state (completed_steps, remaining_steps, current_iteration)
+        conversation_history: Previous conversation context
+
+    Returns:
+        ActionItemsExtractorResponse with batched actions and progress tracking
+    """
     print(f"\n🎯 ACTION ITEMS EXTRACTOR AGENT STARTED")
-    print(f"   Question: {question[:100]}...")
-    print(f"   Context Keys: {list(context.keys())}")
+    print(f"   User Query: {query[:100]}...")
+    print(f"   Current Route: {context.get('route', 'Unknown')}")
     print(f"   Distilled Nodes Count: {len(context.get('distilledNodes', []))}")
-    print(f"   Route: {context.get('route', 'Unknown')}")
-    print(f"   Feedback: {feedback[:50] if feedback else 'None'}...")
+    print(f"   Action Plan Steps: {action_plan.get('total_steps', 0)}")
+    print(f"   Execution State: Completed={execution_state.get('completed_steps', [])}, Remaining={execution_state.get('remaining_steps', [])}")
+    print(f"   Iteration: {execution_state.get('current_iteration', 0)}")
 
     action_items_extractor_model = model.with_structured_output(ActionItemsExtractorResponse)
-    
-    messages = [SystemMessage(content=system_prompt.format(
-        distilledNodes=context['distilledNodes'],mainTree=context['mainTree'],appState=context['appState'],route=context['route'],feedback=feedback,conversation_history=conversation_history,web_app_context=web_app_context
-    ))]
 
-     # Add conversation history if provided
-    # if conversation_history:
-    #     # Add previous messages (excluding the current user question which will be added separately)
-    #     for msg in conversation_history[:-1]:  # Exclude the last message (current question)
-    #         if msg.role == "user":
-    #             messages.append(HumanMessage(content=msg.content))
-    #         elif msg.role == "assistant":
-    #             messages.append(AIMessage(content=f"Previous assistant response: {msg.content}"))
+    # Format action plan for prompt
+    action_plan_formatted = f"""
+Total Steps: {action_plan.get('total_steps', 0)}
+Summary: {action_plan.get('summary', '')}
 
-    messages.append(HumanMessage(content=question))    
+Plan Steps:
+"""
+    for step in action_plan.get('plan_steps', []):
+        action_plan_formatted += f"Step {step.get('step_number', 0)}: {step.get('description', '')}\n"
+
+    # Format execution state for prompt
+    execution_state_formatted = f"""
+Completed Steps: {execution_state.get('completed_steps', [])}
+Remaining Steps: {execution_state.get('remaining_steps', [])}
+Current Iteration: {execution_state.get('current_iteration', 0)}
+"""
+
+    # Get current date/time
+    from datetime import datetime
+    current_date_time = datetime.now().strftime("%B %d, %Y %H:%M:%S")
+
+    # Prepare context values
+    conv_history = conversation_history or "No previous conversation."
+
+    formatted_prompt = system_prompt.format(
+        action_plan=action_plan_formatted,
+        execution_state=execution_state_formatted,
+        distilledNodes=context.get('distilledNodes', []),
+        mainTree=context.get('mainTree', []),
+        appState=context.get('appState', {}),
+        route=context.get('route', ''),
+        user_query=query,
+        conversation_history=conv_history,
+        web_app_context=web_app_context,
+        current_date_time=current_date_time
+    )
+
+    messages = [
+        SystemMessage(content=formatted_prompt),
+        HumanMessage(content=f"Analyze the action plan and current DOM, then generate DOM actions for executable steps.\n\nUser Query: {query}")
+    ]
+
     print("🤖 Calling AI model for action items extraction...")
-
     response = action_items_extractor_model.invoke(messages)
+
     print(f"✅ ACTION ITEMS EXTRACTOR COMPLETED")
     print(f"   Generated {len(response.action_items)} action items")
+    print(f"   Completed Steps: {response.completed_steps}")
+    print(f"   Current Batch Steps: {response.current_batch_steps}")
+    print(f"   Remaining Steps: {response.remaining_steps}")
+    print(f"   Task Completed: {response.task_completed}")
+    print(f"   Batch Reason: {response.batch_reason}")
+    if response.blocked_reason:
+        print(f"   Blocked Reason: {response.blocked_reason}")
     print(f"   Message: {response.message[:100]}...")
-    
+
     # Print each action item
     for i, item in enumerate(response.action_items):
-        print(f"   Action {i+1}: {item.action} - {item.description[:50]}...")
+        print(f"   Action {i+1}: {item.action} -> {item.element_selector} - {item.description[:50]}...")
 
     return response
