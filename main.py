@@ -316,7 +316,7 @@ async def generate_streaming_response(query: AgentQuery):
             print(f"   ⚠️  Blocked Reason: {action_items_response.blocked_reason}")
         print(f"   Task Completed: {action_items_response.task_completed}")
 
-        # Log event to session
+        # Log event to session (including actual action items)
         session_data.add_event("assistant", "action_items_extractor", {
             "iteration": execution_state["current_iteration"],
             "completed_steps": action_items_response.completed_steps,
@@ -325,7 +325,9 @@ async def generate_streaming_response(query: AgentQuery):
             "task_completed": action_items_response.task_completed,
             "batch_reason": action_items_response.batch_reason,
             "blocked_reason": action_items_response.blocked_reason,
-            "action_items_count": len(action_items_response.action_items)
+            "action_items_count": len(action_items_response.action_items),
+            "action_items": [item.dict() for item in action_items_response.action_items],  # Full action items with selectors
+            "message": action_items_response.message
         })
 
         # Stream actions and progress to frontend
