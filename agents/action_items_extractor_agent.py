@@ -141,24 +141,10 @@ Sidebar has: <span aria-label="open Engagements">
 
 **Matching Rules:**
 
-
-**❌ BLOCKED - Element NOT in current DOM:**
-- Step says "Click 'From Date' picker" → Not found in DOM → BLOCKED (need to navigate first)
-- Step says "Click three-dot menu in row" → Table not visible → BLOCKED
-- Step says "Click 'Assign' button in modal" → Modal not open → BLOCKED
-
 **EDGE CASE: Already Completed (DOM shows it's done)**
 - Step says "Navigate to Engagements" + DOM route = "/calendar/engagements/home" → Mark as completed
 - Step says "Filter by date" + DOM shows dates already selected → Mark as completed
 
-**Example Matching:**
-```
-Action Plan:
-Step 1: Navigate to Engagements page
-Step 2: Click 'From Date' picker
-Step 3: Select September 15
-Step 4: Click 'To Date' picker
-Step 5: Select October 15
 
 Current DOM: Engagements page (route: /calendar/engagements/home)
 
@@ -529,6 +515,7 @@ Current Iteration: {execution_state.get('current_iteration', 0)}
     # Prepare context values
     conv_history = conversation_history or "No previous conversation."
 
+
     formatted_prompt = system_prompt.format(
         action_plan=action_plan_formatted,
         execution_state=execution_state_formatted,
@@ -541,6 +528,8 @@ Current Iteration: {execution_state.get('current_iteration', 0)}
         web_app_context=web_app_context,
         current_date_time=current_date_time
     )
+
+
 
     messages = [
         SystemMessage(content=formatted_prompt),
