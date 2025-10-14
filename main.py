@@ -7,6 +7,8 @@ from agents.action_items_extractor_agent import ActionItemsExtractorResponse, ac
 from agents.summarise_agent import summarise_agent
 from agents.webassistant import web_assistant_agent
 from fastapi.responses import StreamingResponse
+from mocks.reminder_mock import get_reminder_mock
+from mocks.slots_mock import get_slots_mock
 from models.session import Session
 from tools import query_document, read_file
 from dotenv import load_dotenv
@@ -243,8 +245,12 @@ async def generate_streaming_response(query: AgentQuery):
 @app.post("/api/agent-query")
 def agent_query(query: AgentQuery):
     """Agent query endpoint with streaming response"""
+    # return StreamingResponse(
+    #     generate_streaming_response(query), 
+    #     media_type="text/event-stream"
+    # )
     return StreamingResponse(
-        generate_streaming_response(query), 
+        get_reminder_mock(), 
         media_type="text/event-stream"
     )
 

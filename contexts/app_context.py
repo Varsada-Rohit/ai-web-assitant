@@ -33,4 +33,21 @@ Sections:
                     - Address details including zip code, street, city, and state.
                     - Unit is optional.
 
+
+
 """
+  # - Slots
+  #   - Route: '/calendar/slot'
+  #   - Description:
+  #       This section displays the list of added slots.
+  #       The user can view existing slots and add new ones.
+  #       When adding a slot, the user needs to provide the following details (Optional fields are not required):
+  #         - Add slot for me(User)
+  #           - My Calendar slots switch should be always selected/active.
+  #           - title 
+  #           - Start Date and End Date (Optional)
+  #           - start time and end time (Optional)
+  #           - duration (Optional)
+  #           - Meeting type - Video, Audio, In-Person & Custom
+  #           - Timezone (Optional)
+  #           - Week days - checkbox for each day of the week (Optional)
