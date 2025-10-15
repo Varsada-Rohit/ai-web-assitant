@@ -276,11 +276,22 @@ async def generate_streaming_response(query: AgentQuery):
         print(f"   Completed: {execution_state['completed_steps']}")
         print(f"   Remaining: {execution_state['remaining_steps']}")
 
-        # Use DOM already available in session
+        # Get DOM for this iteration
         # - Iteration 1: Uses DOM fetched before action planning (lines 208-215)
-        # - Iteration 2+: Uses DOM automatically sent by FE via update_interaction_dom after executing actions
-        print(f"📋 Using DOM from session (iteration {execution_state['current_iteration']})")
-        current_dom = session_data.current_interaction_dom
+        # - Iteration 2+: Wait for FE to send updated DOM via update_interaction_dom after executing actions
+        if execution_state["current_iteration"] == 1:
+            print(f"📋 Using initial DOM from session (iteration 1)")
+            current_dom = session_data.current_interaction_dom
+        else:
+            print(f"⏳ Waiting for updated DOM from frontend (iteration {execution_state['current_iteration']})...")
+            # Wait for FE to send updated DOM via update_interaction_dom endpoint
+            if session_data.session_id not in session_event_locks:
+                session_event_locks[session_data.session_id] = asyncio.Event()
+            await session_event_locks[session_data.session_id].wait()
+            session_event_locks[session_data.session_id].clear()
+            print("✅ Updated DOM received from frontend")
+            current_dom = session_data.current_interaction_dom
+
         session_data.current_interaction_dom = None
 
         # Generate batched actions for next executable step(s)
