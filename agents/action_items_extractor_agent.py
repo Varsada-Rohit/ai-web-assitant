@@ -150,12 +150,18 @@ For each remaining plan step, classify as:
 **ID Selector Rules:**
 
 1. **IDs Starting with Digits:**
-   - ✅ VALID: `document.getElementById("123abc")` (no escaping needed)
-   - ❌ INVALID: `querySelector("#123abc")` (CSS syntax error)
-   - ✅ VALID: `querySelector("#\\31 23abc")` (escape first digit as `\3X `)
-   - ✅ VALID: `querySelector("[id='123abc']")` (attribute selector fallback)
+   - ❌ NEVER USE: `#0-actions`, `#123abc`, `#5-button` (CSS syntax error - will fail)
+   - ✅ ALWAYS USE: `[id="0-actions"]`, `[id="123abc"]`, `[id="5-button"]` (attribute selector)
 
-   **Decision Rule:** If ID starts with digit → Use `getElementById` in frontend OR escape first digit
+   **CRITICAL:** If you detect an ID that starts with a digit (0-9), you MUST use the attribute selector format `[id="value"]`. Do NOT use `#` prefix for digit-starting IDs.
+
+   **Detection Rule:**
+   ```
+   IF id[0] is digit (0-9):
+       element_selector = '[id="<id_value>"]'  # ✅ CORRECT
+   ELSE:
+       element_selector = '#<id_value>'  # ✅ CORRECT
+   ```
 
 2. **Special Characters in IDs:**
    - Characters requiring escaping: `. # : [ ] ( ) @ $ * + ~ > | ^ =`
@@ -170,16 +176,22 @@ For each remaining plan step, classify as:
 
 ```
 FOR each DOM interaction step:
-  1. Check if element has data-* attribute → Use `[data-test-id="value"]`
+  1. Check if element has data-* attribute → Use [data-test-id="value"]
   2. Check if element has id:
-     - If id starts with digit → Use `getElementById` notation or `[id="value"]`
-     - If id contains special chars → Escape them OR use `[id="value"]`
-     - Otherwise → Use `#id-value`
-  3. Check if element has aria-label → Use `[aria-label="value"]`
-  4. Fallback to class → Use `.class-name` (warn if dynamic)
+     - If id[0] is digit (0-9) → MUST use [id="value"] format
+     - If id contains special chars → Use [id="value"] format
+     - Otherwise → Use #id-value
+  3. Check if element has aria-label → Use [aria-label="value"]
+  4. Fallback to class → Use .class-name (warn if dynamic)
   5. Validate: Ensure selector is unique in distilledNodes
      - If not unique → Add parent context or fail with blocked_reason
 ```
+
+**Examples:**
+- id="0-actions" → element_selector: "[id=\\"0-actions\\"]" ✅
+- id="submit-btn" → element_selector: "#submit-btn" ✅
+- id="user.email" → element_selector: "[id=\\"user.email\\"]" ✅
+- aria-label="Close dialog" → element_selector: "[aria-label=\\"Close dialog\\"]" ✅
 
 **Common Edge Cases:**
 
