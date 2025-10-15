@@ -276,17 +276,10 @@ async def generate_streaming_response(query: AgentQuery):
         print(f"   Completed: {execution_state['completed_steps']}")
         print(f"   Remaining: {execution_state['remaining_steps']}")
 
-        # Request fresh DOM context
-        yield json.dumps({"content": "interaction_dom", "type": "context_request"}) + "\n\n"
-        print("🔄 Requesting fresh DOM context from client...")
-
-        # Wait for DOM update
-        if session_data.session_id not in session_event_locks:
-            session_event_locks[session_data.session_id] = asyncio.Event()
-        await session_event_locks[session_data.session_id].wait()
-        session_event_locks[session_data.session_id].clear()
-        print("✅ DOM context received")
-
+        # Use DOM already available in session
+        # - Iteration 1: Uses DOM fetched before action planning (lines 208-215)
+        # - Iteration 2+: Uses DOM automatically sent by FE via update_interaction_dom after executing actions
+        print(f"📋 Using DOM from session (iteration {execution_state['current_iteration']})")
         current_dom = session_data.current_interaction_dom
         session_data.current_interaction_dom = None
 
