@@ -231,6 +231,7 @@ async def generate_streaming_response(query: AgentQuery):
 
     # Log the plan
     session_data.add_event("assistant", "action_planner", action_plan.dict())
+    session_data.save()
     print(f"📝 Action plan event logged")
 
     # Stream the plan to user
@@ -333,6 +334,7 @@ async def generate_streaming_response(query: AgentQuery):
             "action_items": [item.dict() for item in action_items_response.action_items],  # Full action items with selectors
             "message": action_items_response.message
         })
+        session_data.save()
 
         # Stream actions and progress to frontend
         action_items_dict = [item.dict() for item in action_items_response.action_items]

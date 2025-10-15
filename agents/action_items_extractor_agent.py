@@ -139,11 +139,54 @@ For each remaining plan step, classify as:
 - value: Option to select (use format "MMM DD, YYYY" for dates)
 - Example: {{"action": "select", "element_selector": "#from-date", "value": "Sep 15, 2025"}}
 
-### Selector Extraction
+### Selector Extraction Best Practices
 
-- Prefer: id attribute (most reliable)
-- Fallback: aria-label attribute
-- Ensure: Selector is unique in distilledNodes
+**Preference Hierarchy:**
+1. **data-* attributes** (most stable across app changes)
+2. **id attribute** (reliable but requires edge case handling)
+3. **aria-label** (semantic and stable)
+4. **class names** (last resort, may be dynamic)
+
+**ID Selector Rules:**
+
+1. **IDs Starting with Digits:**
+   - ✅ VALID: `document.getElementById("123abc")` (no escaping needed)
+   - ❌ INVALID: `querySelector("#123abc")` (CSS syntax error)
+   - ✅ VALID: `querySelector("#\\31 23abc")` (escape first digit as `\3X `)
+   - ✅ VALID: `querySelector("[id='123abc']")` (attribute selector fallback)
+
+   **Decision Rule:** If ID starts with digit → Use `getElementById` in frontend OR escape first digit
+
+2. **Special Characters in IDs:**
+   - Characters requiring escaping: `. # : [ ] ( ) @ $ * + ~ > | ^ =`
+   - Example: `id="user.email"` → `querySelector("#user\\.email")`
+   - Example: `id="btn:submit"` → `querySelector("#btn\\:submit")`
+
+3. **Uniqueness Validation:**
+   - ALWAYS verify selector matches exactly ONE element in distilledNodes
+   - If multiple matches found → Add parent context or switch to more specific selector
+
+**Selector Generation Algorithm:**
+
+```
+FOR each DOM interaction step:
+  1. Check if element has data-* attribute → Use `[data-test-id="value"]`
+  2. Check if element has id:
+     - If id starts with digit → Use `getElementById` notation or `[id="value"]`
+     - If id contains special chars → Escape them OR use `[id="value"]`
+     - Otherwise → Use `#id-value`
+  3. Check if element has aria-label → Use `[aria-label="value"]`
+  4. Fallback to class → Use `.class-name` (warn if dynamic)
+  5. Validate: Ensure selector is unique in distilledNodes
+     - If not unique → Add parent context or fail with blocked_reason
+```
+
+**Common Edge Cases:**
+
+- **Dynamic IDs**: Avoid selectors like `#input-1234567890` (timestamp/random suffix)
+- **Compound Selectors**: Use `#parent-id #child-id` only if single selector is ambiguous
+- **Hidden Elements**: Verify element is not `display:none` or `visibility:hidden`
+- **Iframe Context**: Note if element is inside iframe (requires special handling)
 
 ⸻
 
