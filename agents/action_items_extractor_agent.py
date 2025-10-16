@@ -83,6 +83,56 @@ For each remaining plan step, classify as:
    - DOM element not present in current page
    - Depends on earlier step that hasn't executed
 
+### Item Lookup Heuristic
+
+**When step references specific item identifier:**
+
+STEP 1: Extract item identifier
+- Pattern: Text in quotes ('[item]' or "[item]")
+- This is the target to find in DOM
+
+STEP 2: Search distilledNodes for identifier
+- Search locations: text content, aria-labels, data attributes, ids
+- Search contexts: table rows, list items, card elements
+
+STEP 3: Decision tree
+
+```
+IF item found in distilledNodes:
+  → Extract element selector
+  → Mark step EXECUTABLE
+  → Generate action
+
+ELSE (item NOT found):
+  → Detect lookup mechanisms in distilledNodes
+
+  IF search input exists:
+    → Generate fill action with item identifier
+    → Mark original step BLOCKED
+    → blocked_reason: "Searching for item"
+
+  ELSE IF filter dropdowns exist:
+    → Analyze filter relevance to item
+    → Generate select action for relevant filter
+    → Mark original step BLOCKED
+    → blocked_reason: "Applying filter to find item"
+
+  ELSE IF pagination controls exist:
+    → Generate click action on Next/pagination
+    → Mark original step BLOCKED
+    → blocked_reason: "Item not on current page, checking next"
+
+  ELSE:
+    → Mark step BLOCKED
+    → blocked_reason: "Item not found, no lookup mechanisms available"
+    → task_completed: false
+```
+
+STEP 4: Next iteration after lookup action
+- Re-execute STEP 2 (search distilledNodes)
+- IF found → Execute original action
+- IF not found → Try next lookup mechanism or terminal block
+
 ### Precondition Rules
 
 **Navigation Steps:**
@@ -119,25 +169,21 @@ For each remaining plan step, classify as:
 
 ### Action Types
 
-**navigate:** Route change (no DOM selector needed)
-- element_selector: "" (empty)
-- value: Target route path
-- Example: {{"action": "navigate", "element_selector": "", "value": "/calendar/engagements/home"}}
+**navigate:**
+- element_selector: "" (empty string)
+- value: Target route path from step description
 
-**click:** Click a button/link
-- element_selector: DOM selector (id or aria-label)
-- value: "" (empty)
-- Example: {{"action": "click", "element_selector": "#submit-btn", "value": ""}}
+**click:**
+- element_selector: Extracted DOM selector
+- value: "" (empty string)
 
-**fill:** Type text into input field
-- element_selector: DOM selector
-- value: Text to enter
-- Example: {{"action": "fill", "element_selector": "#search-input", "value": "John Doe"}}
+**fill:**
+- element_selector: Extracted DOM selector for input field
+- value: Text content to enter
 
-**select:** Select from dropdown or date picker
-- element_selector: DOM selector
-- value: Option to select (use format "MMM DD, YYYY" for dates)
-- Example: {{"action": "select", "element_selector": "#from-date", "value": "Sep 15, 2025"}}
+**select:**
+- element_selector: Extracted DOM selector for dropdown/picker
+- value: Option value to select (dates as "MMM DD, YYYY")
 
 ### Selector Extraction Best Practices
 
@@ -149,28 +195,27 @@ For each remaining plan step, classify as:
 
 **ID Selector Rules:**
 
-1. **IDs Starting with Digits:**
-   - ❌ NEVER USE: `#0-actions`, `#123abc`, `#5-button` (CSS syntax error - will fail)
-   - ✅ ALWAYS USE: `[id="0-actions"]`, `[id="123abc"]`, `[id="5-button"]` (attribute selector)
+1. **Digit-Starting IDs:**
+   - Pattern: id value starts with [0-9]
+   - Syntax: MUST use `[id="value"]` format (NOT `#value`)
+   - Reason: CSS selector syntax error with `#` prefix on digit-starting IDs
 
-   **CRITICAL:** If you detect an ID that starts with a digit (0-9), you MUST use the attribute selector format `[id="value"]`. Do NOT use `#` prefix for digit-starting IDs.
-
-   **Detection Rule:**
+   **Detection Heuristic:**
    ```
-   IF id[0] is digit (0-9):
-       element_selector = '[id="<id_value>"]'  # ✅ CORRECT
+   IF id[0] in '0123456789':
+       selector_format = '[id="<id_value>"]'
    ELSE:
-       element_selector = '#<id_value>'  # ✅ CORRECT
+       selector_format = '#<id_value>'
    ```
 
-2. **Special Characters in IDs:**
-   - Characters requiring escaping: `. # : [ ] ( ) @ $ * + ~ > | ^ =`
-   - Example: `id="user.email"` → `querySelector("#user\\.email")`
-   - Example: `id="btn:submit"` → `querySelector("#btn\\:submit")`
+2. **Special Character IDs:**
+   - Characters: `. # : [ ] ( ) @ $ * + ~ > | ^ =`
+   - Syntax: Use `[id="value"]` format OR escape characters
+   - Preference: `[id="value"]` (simpler than escaping)
 
 3. **Uniqueness Validation:**
-   - ALWAYS verify selector matches exactly ONE element in distilledNodes
-   - If multiple matches found → Add parent context or switch to more specific selector
+   - Verify selector matches exactly ONE element in distilledNodes
+   - IF multiple matches → Add parent context OR use more specific attribute
 
 **Selector Generation Algorithm:**
 
@@ -187,18 +232,12 @@ FOR each DOM interaction step:
      - If not unique → Add parent context or fail with blocked_reason
 ```
 
-**Examples:**
-- id="0-actions" → element_selector: "[id=\\"0-actions\\"]" ✅
-- id="submit-btn" → element_selector: "#submit-btn" ✅
-- id="user.email" → element_selector: "[id=\\"user.email\\"]" ✅
-- aria-label="Close dialog" → element_selector: "[aria-label=\\"Close dialog\\"]" ✅
+**Edge Cases:**
 
-**Common Edge Cases:**
-
-- **Dynamic IDs**: Avoid selectors like `#input-1234567890` (timestamp/random suffix)
-- **Compound Selectors**: Use `#parent-id #child-id` only if single selector is ambiguous
-- **Hidden Elements**: Verify element is not `display:none` or `visibility:hidden`
-- **Iframe Context**: Note if element is inside iframe (requires special handling)
+- **Dynamic IDs**: Avoid timestamp/random suffixes (prefer data-* or aria-label)
+- **Compound Selectors**: Only use parent context if single selector non-unique
+- **Hidden Elements**: Skip if display:none or visibility:hidden
+- **Iframe Context**: Note if requires iframe-specific handling
 
 ⸻
 
