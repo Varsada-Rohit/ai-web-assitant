@@ -19,6 +19,7 @@ class Session:
             self.path = f"./sessions/{session_id}.json"  # file-based storage
             self.current_dom_summary = None
             self.current_interaction_dom = None
+            self.dom_snapshots = {}  # Store DOM for each iteration
             print(f"   ✅ New session created: {self.session_id}")
         else:
             print("   📖 Loading existing session...")
@@ -31,6 +32,7 @@ class Session:
                 self.context_state = data["context_state"]
                 self.current_dom_summary = data.get("current_dom_summary")
                 self.current_interaction_dom = data.get("current_interaction_dom")
+                self.dom_snapshots = data.get("dom_snapshots", {})
             print(f"   ✅ Session loaded: {self.session_id} ({len(self.events)} events)")
 
     def add_event(self, event_type, agent, data):
@@ -75,6 +77,18 @@ class Session:
         self.current_interaction_dom = current_interaction_dom
         print(f"   ✅ Interaction DOM updated")
 
+    def store_dom_snapshot(self, iteration: int, dom_data: dict):
+        """Store DOM snapshot for a specific iteration for debugging purposes"""
+        print(f"📸 STORING DOM SNAPSHOT")
+        print(f"   Iteration: {iteration}")
+        print(f"   DOM Keys: {list(dom_data.keys()) if isinstance(dom_data, dict) else 'N/A'}")
+
+        iteration_key = f"iteration_{iteration}"
+        self.dom_snapshots[iteration_key] = dom_data
+
+        print(f"   ✅ DOM snapshot stored for iteration {iteration}")
+        print(f"   Total snapshots: {len(self.dom_snapshots)}")
+
     # ---- persistence methods ----
     def save(self):
         print(f"💾 SAVING SESSION")
@@ -92,11 +106,13 @@ class Session:
                     "context_state": self.context_state,
                     "current_dom_summary": self.current_dom_summary,
                     "current_interaction_dom": self.current_interaction_dom,
+                    "dom_snapshots": self.dom_snapshots,
                 },
                 f,
                 indent=2,
             )
         print(f"   ✅ Session saved successfully")
+        print(f"   DOM Snapshots: {len(self.dom_snapshots)} iterations")
 
     @classmethod
     def session_exists(self,session_id):

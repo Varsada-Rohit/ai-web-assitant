@@ -293,6 +293,11 @@ async def generate_streaming_response(query: AgentQuery):
             print("✅ Updated DOM received from frontend")
             current_dom = session_data.current_interaction_dom
 
+        # Store DOM snapshot for debugging
+        print(f"📸 Storing DOM snapshot for iteration {execution_state['current_iteration']}")
+        session_data.store_dom_snapshot(execution_state["current_iteration"], current_dom)
+        session_data.save()  # Save immediately to persist snapshot
+
         session_data.current_interaction_dom = None
 
         # Generate batched actions for next executable step(s)

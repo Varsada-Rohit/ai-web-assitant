@@ -195,17 +195,22 @@ STEP 4: Next iteration after lookup action
 
 **ID Selector Rules:**
 
-1. **Digit-Starting IDs:**
+1. **CRITICAL: Digit-Starting IDs (Common Error)**
    - Pattern: id value starts with [0-9]
-   - Syntax: MUST use `[id="value"]` format (NOT `#value`)
-   - Reason: CSS selector syntax error with `#` prefix on digit-starting IDs
+   - Examples: "0-actions", "123abc", "5-button"
+
+   **NEVER use `#` prefix for digit-starting IDs:**
+   - `#0-actions` ❌ INVALID - querySelector will fail
+   - `[id="0-actions"]` ✅ VALID - always works
+
+   **Reason:** CSS selector syntax does not allow `#` prefix when ID starts with digit
 
    **Detection Heuristic:**
    ```
    IF id[0] in '0123456789':
-       selector_format = '[id="<id_value>"]'
+       selector_format = '[id="<id_value>"]'  ← REQUIRED
    ELSE:
-       selector_format = '#<id_value>'
+       selector_format = '#<id_value>'  ← OK for non-digit IDs
    ```
 
 2. **Special Character IDs:**
@@ -221,16 +226,86 @@ STEP 4: Next iteration after lookup action
 
 ```
 FOR each DOM interaction step:
-  1. Check if element has data-* attribute → Use [data-test-id="value"]
-  2. Check if element has id:
-     - If id[0] is digit (0-9) → MUST use [id="value"] format
-     - If id contains special chars → Use [id="value"] format
-     - Otherwise → Use #id-value
-  3. Check if element has aria-label → Use [aria-label="value"]
-  4. Fallback to class → Use .class-name (warn if dynamic)
-  5. Validate: Ensure selector is unique in distilledNodes
-     - If not unique → Add parent context or fail with blocked_reason
+  1. Search distilledNodes for target element matching step description
+
+  2. ⚠️ VALIDATION: Check element's attributes object
+     - ONLY use attributes that exist in the attributes object
+     - IF you don't see an attribute → DO NOT use it in selector
+     - Example: IF attributes has role and class but no id or aria-label
+       → ❌ Cannot use [id="..."] (id not in attributes)
+       → ❌ Cannot use [aria-label="..."] (aria-label not in attributes)
+       → ✅ Can use [role="menuitem"] (role exists in attributes)
+
+  3. Check element attributes in order of preference:
+     a) data-* attribute exists in attributes → Use [data-testid="value"]
+
+     b) id attribute exists in attributes → CRITICAL: Check first character:
+        IF id[0] in '0123456789':
+          → MUST use [id="value"] format
+          → NEVER use #id format (CSS syntax error)
+        ELSE IF id contains special chars (. : [ ] etc):
+          → Use [id="value"] format
+        ELSE:
+          → Use #id format
+
+     c) aria-label attribute exists in attributes → Use [aria-label="value"]
+
+     d) STOP HERE - do not proceed if no unique attribute found
+
+  4. IF no unique attribute found (common for menu items):
+     a) Check if element has text content
+     b) Find parent menu container using aria-labelledby:
+        - Menu items have parent with role="menu"
+        - Menu has aria-labelledby pointing to trigger button
+        - Use: ul[aria-labelledby='button-id'] NOT button-id > ul
+     c) Build selector WITHOUT text matching pseudo-selectors:
+        - ❌ WRONG: "[id='button'] > ul[role='menu']" (child selector)
+        - ❌ WRONG: "li[role='menuitem']:has-text('Cancel')" (pseudo-selector)
+        - ✅ CORRECT: "ul[aria-labelledby='button-id'] > li[role='menuitem']"
+     d) Put text content in value field for frontend filtering:
+        - element_selector: "ul[aria-labelledby='button-id'] > [role='menuitem']"
+        - value: "Cancel"  ← Text to match goes here, not in selector
+        - Frontend will: querySelectorAll(selector).find(el => el.textContent === value)
+
+     **CRITICAL: Menu containers are NOT children of trigger buttons**
+     - Modern frameworks (MUI, React) render menus in portals
+     - Use aria-labelledby relationship, NOT parent-child selectors
+     - Pattern: ul[aria-labelledby='X'] NOT [id='X'] > ul
+
+  5. Validate: Ensure selector strategy is unambiguous
+     - If multiple matches possible without text filtering → Use text match strategy
+     - If parent context unclear → Fail with blocked_reason
 ```
+
+**CRITICAL RULES:**
+
+1. **Never invent attributes that don't exist in distilledNodes**
+   - IF element has no aria-label in distilledNodes → DO NOT use [aria-label="..."]
+   - IF element has no id in distilledNodes → DO NOT use #id or [id="..."]
+   - Only use attributes that are explicitly present in the element's attributes object
+
+2. **Never use pseudo-selectors for text matching**
+   - ❌ NEVER use: :has-text(), :contains(), :text(), :is(), :where()
+   - ❌ NEVER use: Playwright/Puppeteer/Testing Library specific syntax
+   - ✅ ONLY use: Standard CSS selectors supported by querySelector()
+
+   **Why:** Frontend uses document.querySelector() which only supports CSS Level 4
+
+   **When element has no unique attribute but has text content:**
+   - Put parent selector + role in element_selector
+   - Put text content in value field
+   - Frontend will filter by text matching
+
+3. **Never use parent-child selectors for menus/dialogs**
+   - ❌ NEVER use: [id="button"] > ul[role="menu"]
+   - ❌ NEVER use: button > div[role="dialog"]
+   - ✅ ALWAYS use: ul[aria-labelledby="button"]
+   - ✅ ALWAYS use: div[role="dialog"][aria-labelledby="button"]
+
+   **Why:** Modern frameworks render menus/dialogs in portals (React Portal, body appends)
+   - They are NOT children of trigger elements
+   - Use aria-labelledby relationship to find them
+   - Pattern: [role="menu"][aria-labelledby="X"] NOT [id="X"] > [role="menu"]
 
 **Edge Cases:**
 
@@ -368,6 +443,9 @@ Current Iteration: {execution_state.get('current_iteration', 0)}
         web_app_context=web_app_context,
         current_date_time=current_date_time
     )
+
+    with open("formatted_prompt.txt", "w") as f:
+        f.write(formatted_prompt)
 
 
 
