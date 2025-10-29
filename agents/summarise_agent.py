@@ -255,13 +255,7 @@ def summarise_agent(
     Returns:
         SummariseResponse with comprehensive state summary
     """
-    print(f"\n📊 SUMMARISE AGENT STARTED")
-    print(f"   Route: {context.get('route', 'Unknown')}")
-    print(f"   Distilled Nodes Count: {len(context.get('distilledNodes', []))}")
-    print(f"   Main Tree Count: {len(context.get('mainTree', []))}")
-    print(f"   App State Keys: {list(context.get('appState', {}).keys())}")
-    print(f"   Application Context Length: {len(application_context) if application_context else 0}")
-    print(f"   Page Context Length: {len(page_context) if page_context else 0}")
+  
     
     summarise_model = model.with_structured_output(SummariseResponse)
 

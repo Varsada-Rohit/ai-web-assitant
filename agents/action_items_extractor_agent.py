@@ -399,7 +399,6 @@ def action_items_extractor_agent(
     print(f"\n🎯 ACTION ITEMS EXTRACTOR AGENT STARTED")
     print(f"   User Query: {query[:100]}...")
     print(f"   Current Route: {context.get('route', 'Unknown')}")
-    print(f"   Distilled Nodes Count: {len(context.get('distilledNodes', []))}")
     print(f"   Action Plan Steps: {action_plan.get('total_steps', 0)}")
     print(f"   Execution State: Completed={execution_state.get('completed_steps', [])}, Remaining={execution_state.get('remaining_steps', [])}")
     print(f"   Iteration: {execution_state.get('current_iteration', 0)}")

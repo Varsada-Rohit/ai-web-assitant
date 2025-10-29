@@ -48,10 +48,22 @@ class Message(BaseModel):
 
 
 class ContextPayload(BaseModel):
-    distilledNodes: Optional[list]
-    mainTree: Optional[list]
-    appState: Optional[dict]
-    route: Optional[str]
+    # New robust structure
+    metadata: dict
+    # elements: list
+    # forms: list
+    # headings: list
+    # messages: list
+    # shadowDomDetected: bool
+    # iframesDetected: list
+    current_route: str
+
+    # Legacy fields (optional)
+    # distilledNodes: Optional[list] = None
+    mainTree: Optional[list] = None
+    # appState: Optional[dict] = None
+    # route: Optional[str] = None
+
 
 class AgentQuery(BaseModel):
     session_id: str
@@ -93,10 +105,16 @@ def remove_session_from_memory(session_id: str):
 async def update_context(context: ContextPayload, x_session_id: Optional[str] = Header(None)):
     print(f"\n=== UPDATE CONTEXT REQUEST ===")
     print(f"Session ID: {x_session_id}")
-    print(f"Route: {context.route}")
-    print(f"Distilled Nodes Count: {len(context.distilledNodes) if context.distilledNodes else 0}")
-    print(f"Main Tree Count: {len(context.mainTree) if context.mainTree else 0}")
-    
+    # Use current_route from new structure, fallback to legacy route
+    route = context.current_route if context.current_route else context.route
+    # print(f"Route: {route}")
+    # print(f"Elements Count: {len(context.elements)}")
+    # print(f"Forms Count: {len(context.forms)}")
+    # print(f"Headings Count: {len(context.headings)}")
+    # print(f"Messages Count: {len(context.messages)}")
+    # print(f"Shadow DOM Detected: {context.shadowDomDetected}")
+    # print(f"Iframes Detected: {len(context.iframesDetected)}")
+
     if not x_session_id:
         print("❌ ERROR: Missing X-Session-Id header")
         raise HTTPException(status_code=400, detail="Missing X-Session-Id header")
@@ -106,19 +124,21 @@ async def update_context(context: ContextPayload, x_session_id: Optional[str] = 
     from contexts.page_context_mapper import get_page_context
 
     # Get page-specific context using the mapper
-    page_specific_context = get_page_context(context.route)
-    print(f"📄 Page context loaded for route: {context.route}")
+    page_specific_context = get_page_context(route)
+    print(f"📄 Page context loaded for route: {route}")
 
-    print("🤖 Running summarise agent...")
-    context_summary = summarise_agent(
-        context.dict(),
-        application_context=web_app_context,
-        page_context=page_specific_context
-    )
-    print(f"✅ Context summary generated ({len(context_summary.summary)} chars)")
+    # print("🤖 Running summarise agent...")
+    # context_summary = summarise_agent(
+    #     context.dict(),
+    #     application_context=web_app_context,
+    #     page_context=page_specific_context
+    # )
+
+    # print(f"✅ Context summary generated ({len(context_summary.summary)} chars)")
 
     session = get_or_create_session(x_session_id)
-    session.update_current_dom_summary(context_summary.summary)
+    # session.update_current_dom_summary(context_summary.summary)
+    session.update_current_dom_summary("summary ")
     session.save()
     print(f"💾 Session updated and saved")
 
@@ -129,17 +149,21 @@ async def update_context(context: ContextPayload, x_session_id: Optional[str] = 
 async def update_interaction_dom(interaction_dom: ContextPayload, x_session_id: Optional[str] = Header(None)):
     print(f"\n=== UPDATE INTERACTION DOM REQUEST ===")
     print(f"Session ID: {x_session_id}")
-    print(f"Route: {interaction_dom.route}")
-    print(f"Distilled Nodes Count: {len(interaction_dom.distilledNodes) if interaction_dom.distilledNodes else 0}")
+    # Use current_route from new structure, fallback to legacy route
+    route = interaction_dom.current_route if interaction_dom.current_route else interaction_dom.route
+    print(f"Route: {route}")
+    print(f"Elements Count: {len(interaction_dom.elements)}")
+    print(f"Forms Count: {len(interaction_dom.forms)}")
+    print(f"Headings Count: {len(interaction_dom.headings)}")
 
     if not x_session_id:
         print("❌ ERROR: Missing X-Session-Id header")
         raise HTTPException(status_code=400, detail="Missing X-Session-Id header")
-    
+
     session = get_or_create_session(x_session_id)
     session.update_current_interaction_dom(interaction_dom.dict())
     print(f"🔄 Updated interaction DOM for session: {x_session_id}")
-    
+
     if x_session_id in session_event_locks:
         session_event_locks[x_session_id].set()
         print(f"🔓 Released event lock for session: {x_session_id}")
